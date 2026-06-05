@@ -1,0 +1,33 @@
+{
+  "name": "kitsune-engine",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev:tamamo": "vite --host 127.0.0.1 --port 5173 --config apps/tamamo/vite.config.ts",
+    "dev:kuzunoha": "vite --host 127.0.0.1 --port 5174 --config apps/kuzunoha/vite.config.ts",
+    "build": "tsc -b && vite build --config apps/tamamo/vite.config.ts && vite build --config apps/kuzunoha/vite.config.ts",
+    "test": "vitest run",
+    "test:quest-smoke": "playwright test tests/smoke/quest.spec.ts"
+  },
+  "dependencies": {
+    "@vitejs/plugin-react": "^4.3.4",
+    "phaser": "^3.90.0",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "zod": "^3.25.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.52.0",
+    "@types/node": "^22.15.0",
+    "@types/react": "^19.1.0",
+    "@types/react-dom": "^19.1.0",
+    "typescript": "^5.8.0",
+    "vite": "^5.4.0",
+    "vitest": "^3.1.0"
+  }
+}
