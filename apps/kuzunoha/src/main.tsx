@@ -2,7 +2,7 @@ import React from "react";
 import { createRoot } from "react-dom/client";
 import Phaser from "phaser";
 import { sampleProject } from "@kitsune/schema/sampleProject";
-import { validateProject, type Entity, type KitsuneProject } from "@kitsune/schema";
+import { validateProject, type Entity, type KitsuneMap, type KitsuneProject, type SpriteAsset, type TilesetAsset, type TileValue } from "@kitsune/schema";
 import { createSaveKey, GameRuntime, type RuntimeSnapshot, type SaveState } from "@kitsune/runtime-core";
 import "./styles.css";
 
@@ -162,7 +162,7 @@ function GameCanvas({
   React.useEffect(() => {
     if (!containerRef.current) return;
 
-    const scene = new WorldScene(runtimeRef, onSnapshot);
+    const scene = new WorldScene(runtimeRef, onSnapshot, project);
     const game = new Phaser.Game({
       type: Phaser.AUTO,
       parent: containerRef.current,
@@ -188,16 +188,37 @@ function GameCanvas({
 class WorldScene extends Phaser.Scene {
   private cursors?: Phaser.Types.Input.Keyboard.CursorKeys;
   private keys?: Record<string, Phaser.Input.Keyboard.Key>;
-  private player?: Phaser.GameObjects.Rectangle;
+  private player?: Phaser.GameObjects.Rectangle | Phaser.GameObjects.Sprite;
   private lastMoveAt = 0;
   private renderedMapId = "";
   private entityViews: Phaser.GameObjects.GameObject[] = [];
 
   constructor(
     private readonly runtimeRef: React.MutableRefObject<GameRuntime | undefined>,
-    private readonly onSnapshot: (snapshot: RuntimeSnapshot) => void
+    private readonly onSnapshot: (snapshot: RuntimeSnapshot) => void,
+    private readonly project: KitsuneProject
   ) {
     super("world");
+  }
+
+  preload() {
+    for (const tileset of Object.values(this.project.assets.tilesets)) {
+      if (isRenderableTileset(tileset)) {
+        this.load.spritesheet(tilesetTextureKey(tileset.key), tileset.image, {
+          frameWidth: tileset.tileSize,
+          frameHeight: tileset.tileSize
+        });
+      }
+    }
+
+    for (const sprite of Object.values(this.project.assets.sprites)) {
+      if (isRenderableSprite(sprite)) {
+        this.load.spritesheet(spriteTextureKey(sprite.key), sprite.image, {
+          frameWidth: sprite.frameWidth,
+          frameHeight: sprite.frameHeight
+        });
+      }
+    }
   }
 
   create() {
@@ -249,43 +270,76 @@ class WorldScene extends Phaser.Scene {
     this.children.removeAll(true);
     const snapshot = runtime.snapshot();
     const map = snapshot.currentMap;
+    const fallbackTileset = tilesetForMap(this.project, map);
     this.renderedMapId = map.id;
 
     for (let y = 0; y < map.height; y += 1) {
       for (let x = 0; x < map.width; x += 1) {
         const tile = map.layers.ground.tiles[y][x];
         const decor = map.layers.decor.tiles[y][x];
-        const blocked = map.layers.collision.tiles[y][x] > 0;
-        this.add.rectangle(x * map.tileSize, y * map.tileSize, map.tileSize - 1, map.tileSize - 1, tileColor(tile)).setOrigin(0);
-        if (decor > 0) {
-          this.add.circle(x * map.tileSize + 16, y * map.tileSize + 16, 7, decor === 3 ? 0x69b6d1 : 0xf2c14e);
+        const blocked = tileNumber(map.layers.collision.tiles[y][x]) > 0;
+        this.add.rectangle(x * map.tileSize, y * map.tileSize, map.tileSize, map.tileSize, 0x111715).setOrigin(0);
+        this.renderTile(resolveTile(this.project, fallbackTileset, tile), x, y, map.tileSize);
+        if (tileNumber(decor) > 0) {
+          this.renderTile(resolveTile(this.project, fallbackTileset, decor), x, y, map.tileSize, 0.92);
         }
         if (blocked) {
-          this.add.rectangle(x * map.tileSize + 16, y * map.tileSize + 16, 18, 18, 0x1c2421, 0.85).setStrokeStyle(2, 0xfff7ec);
+          this.add.rectangle(x * map.tileSize + map.tileSize / 2, y * map.tileSize + map.tileSize / 2, 18, 18, 0x1c2421, 0.85).setStrokeStyle(2, 0xfff7ec);
         }
       }
     }
 
     this.entityViews = map.entities.map((entity) => {
-      const view = this.add.rectangle(
-        entity.position.x * map.tileSize + 16,
-        entity.position.y * map.tileSize + 16,
-        22,
-        22,
-        entityColor(entity.kind)
-      ).setStrokeStyle(2, 0x111715);
-      this.add.text(entity.position.x * map.tileSize + 9, entity.position.y * map.tileSize + 8, entity.kind[0].toUpperCase(), {
-        color: "#111715",
-        fontSize: "13px",
-        fontFamily: "monospace"
-      });
+      const view = this.renderEntity(entity, map.tileSize);
       return view;
     });
 
-    this.player = this.add.rectangle(0, 0, 22, 26, 0xfff7ec).setStrokeStyle(2, 0x111715);
+    this.player = this.renderPlayer(map.tileSize);
     this.cameras.main.setBounds(0, 0, map.width * map.tileSize, map.height * map.tileSize);
     this.cameras.main.startFollow(this.player, true, 0.2, 0.2);
     this.syncPlayer();
+  }
+
+  private renderTile(tile: ResolvedTile, x: number, y: number, tileSize: number, alpha = 1) {
+    if (tile.value <= 0) return;
+    const { tileset } = tile;
+    if (!isRenderableTileset(tileset)) {
+      this.add.rectangle(x * tileSize, y * tileSize, tileSize - 1, tileSize - 1, tileColor(tile.value)).setOrigin(0);
+      return;
+    }
+
+    const sprite = this.add.image(x * tileSize, y * tileSize, tilesetTextureKey(tileset.key), tile.value - 1).setOrigin(0).setAlpha(alpha);
+    sprite.setScale(tileSize / tileset.tileSize);
+  }
+
+  private renderEntity(entity: Entity, tileSize: number): Phaser.GameObjects.GameObject {
+    const sprite = entity.spriteKey ? this.project.assets.sprites[entity.spriteKey] : undefined;
+    const x = entity.position.x * tileSize + tileSize / 2;
+    const y = entity.position.y * tileSize + tileSize / 2;
+
+    if (isRenderableSprite(sprite)) {
+      const view = this.add.sprite(x, y, spriteTextureKey(sprite.key), sprite.frame);
+      view.setScale(tileSize / Math.max(sprite.frameWidth, sprite.frameHeight));
+      return view;
+    }
+
+    const view = this.add.rectangle(x, y, 22, 22, entityColor(entity.kind)).setStrokeStyle(2, 0x111715);
+    this.add.text(x - 7, y - 8, entity.kind[0].toUpperCase(), {
+      color: "#111715",
+      fontSize: "13px",
+      fontFamily: "monospace"
+    });
+    return view;
+  }
+
+  private renderPlayer(tileSize: number): Phaser.GameObjects.Rectangle | Phaser.GameObjects.Sprite {
+    const hero = this.project.assets.sprites.hero;
+    if (isRenderableSprite(hero)) {
+      const view = this.add.sprite(0, 0, spriteTextureKey(hero.key), hero.frame);
+      view.setScale(tileSize / Math.max(hero.frameWidth, hero.frameHeight));
+      return view;
+    }
+    return this.add.rectangle(0, 0, 22, 26, 0xfff7ec).setStrokeStyle(2, 0x111715);
   }
 
   private syncPlayer() {
@@ -293,7 +347,7 @@ class WorldScene extends Phaser.Scene {
     if (!runtime || !this.player) return;
     const snapshot = runtime.snapshot();
     const tileSize = snapshot.currentMap.tileSize;
-    this.player.setPosition(snapshot.player.x * tileSize + 16, snapshot.player.y * tileSize + 16);
+    this.player.setPosition(snapshot.player.x * tileSize + tileSize / 2, snapshot.player.y * tileSize + tileSize / 2);
   }
 }
 
@@ -363,6 +417,41 @@ function entityColor(kind: Entity["kind"]): number {
   if (kind === "door") return 0xb66d35;
   if (kind === "trigger") return 0xd45757;
   return 0xd7ede4;
+}
+
+function tilesetForMap(project: KitsuneProject, map: KitsuneMap): TilesetAsset | undefined {
+  if (map.tilesetKey) return project.assets.tilesets[map.tilesetKey];
+  return Object.values(project.assets.tilesets)[0];
+}
+
+type ResolvedTile = {
+  tileset?: TilesetAsset;
+  value: number;
+};
+
+function resolveTile(project: KitsuneProject, fallbackTileset: TilesetAsset | undefined, tile: TileValue): ResolvedTile {
+  if (typeof tile === "number") return { tileset: fallbackTileset, value: tile };
+  return { tileset: project.assets.tilesets[tile.tilesetKey] ?? fallbackTileset, value: tile.tile };
+}
+
+function tileNumber(tile: TileValue): number {
+  return typeof tile === "number" ? tile : tile.tile;
+}
+
+function isRenderableTileset(tileset: TilesetAsset | undefined): tileset is TilesetAsset & { image: string; tileSize: number; columns: number } {
+  return Boolean(tileset?.image && tileset.tileSize && tileset.columns);
+}
+
+function isRenderableSprite(sprite: SpriteAsset | undefined): sprite is SpriteAsset & { image: string; frameWidth: number; frameHeight: number; frame: number } {
+  return Boolean(sprite?.image && sprite.frameWidth && sprite.frameHeight && sprite.frame !== undefined);
+}
+
+function tilesetTextureKey(key: string): string {
+  return `tileset:${key}`;
+}
+
+function spriteTextureKey(key: string): string {
+  return `sprite:${key}`;
 }
 
 createRoot(document.getElementById("root")!).render(<App />);

@@ -1,12 +1,22 @@
 import React from "react";
 import { createRoot } from "react-dom/client";
 import { sampleProject } from "@kitsune/schema/sampleProject";
-import { serializeProject, validateProject, type Entity, type EventCommand, type KitsuneProject, type KnowledgeEntry } from "@kitsune/schema";
+import {
+  serializeProject,
+  validateProject,
+  type Entity,
+  type EventCommand,
+  type KitsuneMap,
+  type KitsuneProject,
+  type KnowledgeEntry,
+  type SpriteAsset,
+  type TilesetAsset,
+  type TileValue
+} from "@kitsune/schema";
 import "./styles.css";
 
 const draftKey = "tamamo:draft";
 const entityKinds: Entity["kind"][] = ["npc", "object", "door", "trigger"];
-const tileLabels = ["Empty", "Grass", "Marker", "Water", "Stone"];
 
 type EditorLayer = "ground" | "decor" | "collision";
 type ToolMode = "paint" | "entity";
@@ -16,12 +26,17 @@ function App() {
   const [selectedMapId, setSelectedMapId] = React.useState(sampleProject.start.mapId);
   const [layer, setLayer] = React.useState<EditorLayer>("ground");
   const [tileValue, setTileValue] = React.useState(1);
+  const [brushTilesetKey, setBrushTilesetKey] = React.useState(sampleProject.maps[0].tilesetKey ?? Object.keys(sampleProject.assets.tilesets)[0] ?? "");
   const [mode, setMode] = React.useState<ToolMode>("paint");
   const [entityKind, setEntityKind] = React.useState<Entity["kind"]>("object");
   const [selectedEntityId, setSelectedEntityId] = React.useState(sampleProject.maps[0].entities[0]?.id ?? "");
   const [notice, setNotice] = React.useState("Sample quest loaded.");
 
   const selectedMap = project.maps.find((map) => map.id === selectedMapId) ?? project.maps[0];
+  const tilesetOptions = Object.values(project.assets.tilesets);
+  const fallbackTileset = tilesetForMap(project, selectedMap);
+  const brushTileset = project.assets.tilesets[brushTilesetKey] ?? fallbackTileset;
+  const tilePalette = tilePaletteValues(brushTileset);
   const selectedEntity = selectedMap.entities.find((entity) => entity.id === selectedEntityId);
   const validation = validateProject(project);
 
@@ -47,7 +62,7 @@ function App() {
   function onCellClick(x: number, y: number) {
     if (mode === "paint") {
       updateSelectedMap((map) => {
-        map.layers[layer].tiles[y][x] = tileValue;
+        map.layers[layer].tiles[y][x] = paintedTileValue(layer, brushTileset, tileValue);
       });
       return;
     }
@@ -175,7 +190,14 @@ function App() {
           </label>
           <label>
             Map
-            <select value={selectedMap.id} onChange={(event) => setSelectedMapId(event.target.value)}>
+            <select
+              value={selectedMap.id}
+              onChange={(event) => {
+                const nextMap = project.maps.find((map) => map.id === event.target.value);
+                setSelectedMapId(event.target.value);
+                setBrushTilesetKey(nextMap?.tilesetKey ?? Object.keys(project.assets.tilesets)[0] ?? "");
+              }}
+            >
               {project.maps.map((map) => (
                 <option key={map.id} value={map.id}>
                   {map.name}
@@ -203,16 +225,33 @@ function App() {
                   <option value="collision">Collision</option>
                 </select>
               </label>
+              <label>
+                Paint Tileset
+                <select
+                  value={brushTileset?.key ?? ""}
+                  onChange={(event) => {
+                    const nextTileset = project.assets.tilesets[event.target.value];
+                    setBrushTilesetKey(event.target.value);
+                    setTileValue(tilePaletteValues(nextTileset)[1] ?? 0);
+                  }}
+                >
+                  {tilesetOptions.map((tileset) => (
+                    <option key={tileset.key} value={tileset.key}>
+                      {tileset.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
               <div className="swatches">
-                {tileLabels.map((label, value) => (
+                {tilePalette.map((value) => (
                   <button
-                    key={label}
+                    key={value}
                     className={tileValue === value ? "active" : ""}
                     onClick={() => setTileValue(value)}
-                    title={label}
-                    aria-label={label}
+                    title={tileLabel(brushTileset, value)}
+                    aria-label={tileLabel(brushTileset, value)}
                   >
-                    <span className={`tile-swatch tile-${value}`} />
+                    <span className={`tile-swatch tile-${value}`} style={tilePreviewStyle(brushTileset, value)} />
                   </button>
                 ))}
               </div>
@@ -241,17 +280,23 @@ function App() {
             {selectedMap.layers.ground.tiles.map((row, y) =>
               row.map((groundTile, x) => {
                 const decorTile = selectedMap.layers.decor.tiles[y][x];
-                const blocked = selectedMap.layers.collision.tiles[y][x] > 0;
+                const blocked = tileNumber(selectedMap.layers.collision.tiles[y][x]) > 0;
                 const entity = selectedMap.entities.find((candidate) => candidate.position.x === x && candidate.position.y === y);
+                const sprite = entity?.spriteKey ? project.assets.sprites[entity.spriteKey] : undefined;
                 return (
                   <button
                     key={`${x}-${y}`}
-                    className={`cell tile-${groundTile} ${blocked ? "blocked" : ""} ${selectedEntityId === entity?.id ? "selected" : ""}`}
+                    className={`cell ${blocked ? "blocked" : ""} ${selectedEntityId === entity?.id ? "selected" : ""}`}
+                    style={tileCellPreviewStyle(project, selectedMap, groundTile)}
                     onClick={() => (entity && mode === "entity" ? setSelectedEntityId(entity.id) : onCellClick(x, y))}
                     title={`${x}, ${y}`}
                   >
-                    {decorTile > 0 && <span className={`decor decor-${decorTile}`} />}
-                    {entity && <span className={`entity-dot ${entity.kind}`}>{entity.kind[0].toUpperCase()}</span>}
+                    {tileNumber(decorTile) > 0 && <span className="decor" style={tileCellPreviewStyle(project, selectedMap, decorTile)} />}
+                    {entity && (
+                      <span className={`entity-dot ${entity.kind} ${isPreviewableSprite(sprite) ? "sprite" : ""}`} style={spritePreviewStyle(sprite)}>
+                        {!isPreviewableSprite(sprite) && entity.kind[0].toUpperCase()}
+                      </span>
+                    )}
                   </button>
                 );
               })
@@ -263,6 +308,7 @@ function App() {
           <EntityPanel
             entity={selectedEntity}
             project={project}
+            updateProject={updateProject}
             onSelect={setSelectedEntityId}
             entities={selectedMap.entities}
             updateEntity={updateSelectedEntity}
@@ -295,6 +341,7 @@ function EntityPanel({
   entity,
   entities,
   project,
+  updateProject,
   onSelect,
   updateEntity,
   deleteEntity
@@ -302,10 +349,55 @@ function EntityPanel({
   entity?: Entity;
   entities: Entity[];
   project: KitsuneProject;
+  updateProject: (updater: (project: KitsuneProject) => KitsuneProject) => void;
   onSelect: (id: string) => void;
   updateEntity: (updater: (entity: Entity) => void) => void;
   deleteEntity: () => void;
 }) {
+  const [spritePickerOpen, setSpritePickerOpen] = React.useState(false);
+  const [spriteTilesetKey, setSpriteTilesetKey] = React.useState(Object.keys(project.assets.tilesets)[0] ?? "");
+  const currentSprite = entity?.spriteKey ? project.assets.sprites[entity.spriteKey] : undefined;
+  const tilesets = Object.values(project.assets.tilesets);
+  const spriteTileset = project.assets.tilesets[spriteTilesetKey] ?? tilesets[0];
+
+  function openSpritePicker() {
+    setSpriteTilesetKey(tilesetKeyForSprite(project, currentSprite) ?? tilesets[0]?.key ?? "");
+    setSpritePickerOpen(true);
+  }
+
+  function setSpriteFromTileset(tileset: TilesetAsset, frame: number) {
+    if (!entity || !isPreviewableTileset(tileset)) return;
+    const key = `sprite-${tileset.key}-${frame + 1}`;
+    updateProject((draft) => {
+      if (!draft.assets.sprites[key]) {
+        draft.assets.sprites[key] = {
+          key,
+          label: `${tileset.label} frame ${frame + 1}`,
+          image: tileset.image,
+          frameWidth: tileset.tileSize ?? 16,
+          frameHeight: tileset.tileSize ?? 16,
+          frame,
+          columns: tileset.columns,
+          rows: tileset.rows
+        };
+      }
+
+      for (const map of draft.maps) {
+        const target = map.entities.find((candidate) => candidate.id === entity.id);
+        if (target) target.spriteKey = key;
+      }
+
+      return draft;
+    });
+    setSpritePickerOpen(false);
+  }
+
+  function clearSprite() {
+    updateEntity((draft) => {
+      delete draft.spriteKey;
+    });
+  }
+
   return (
     <section>
       <h2>Entities</h2>
@@ -325,10 +417,63 @@ function EntityPanel({
           </label>
           <label>
             Kind
-            <select value={entity.kind} onChange={(event) => updateEntity((draft) => { draft.kind = event.target.value as Entity["kind"]; draft.spriteKey = draft.kind; })}>
+            <select value={entity.kind} onChange={(event) => updateEntity((draft) => { draft.kind = event.target.value as Entity["kind"]; })}>
               {entityKinds.map((kind) => <option key={kind} value={kind}>{kind}</option>)}
             </select>
           </label>
+          <label>
+            Sprite
+            <div className="sprite-field">
+              <span className="sprite-preview" style={spritePreviewStyle(currentSprite)} />
+              <button type="button" onClick={openSpritePicker}>Choose Sprite</button>
+              <button type="button" onClick={clearSprite}>Clear</button>
+            </div>
+          </label>
+          {spritePickerOpen && (
+            <div className="sprite-modal-backdrop" role="presentation">
+              <section className="sprite-modal" role="dialog" aria-modal="true" aria-label="Choose entity sprite">
+                <header>
+                  <h2>Choose Sprite</h2>
+                  <button type="button" onClick={() => setSpritePickerOpen(false)} aria-label="Close sprite picker">Close</button>
+                </header>
+                <div className="sprite-modal-body">
+                  <label className="tileset-switcher">
+                    Tileset
+                    <select value={spriteTileset?.key ?? ""} onChange={(event) => setSpriteTilesetKey(event.target.value)}>
+                      {tilesets.map((tileset) => (
+                        <option key={tileset.key} value={tileset.key}>
+                          {tileset.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  {spriteTileset && (
+                    <section>
+                      <h3>{spriteTileset.label}</h3>
+                      <div className="sprite-frame-grid">
+                        {tilePaletteValues(spriteTileset).filter((value) => value > 0).map((value) => {
+                          const frame = value - 1;
+                          const active = Boolean(currentSprite && currentSprite.image === spriteTileset.image && currentSprite.frame === frame);
+                          return (
+                            <button
+                              key={`${spriteTileset.key}-${frame}`}
+                              type="button"
+                              className={active ? "active" : ""}
+                              onClick={() => setSpriteFromTileset(spriteTileset, frame)}
+                              title={`${spriteTileset.label} frame ${value}`}
+                              aria-label={`${spriteTileset.label} frame ${value}`}
+                            >
+                              <span className="sprite-choice-preview" style={tilePreviewStyle(spriteTileset, value)} />
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </section>
+                  )}
+                </div>
+              </section>
+            </div>
+          )}
           <div className="coord-row">
             <label>
               X
@@ -465,6 +610,82 @@ function defaultEvent(kind: Entity["kind"], project: KitsuneProject): EventComma
 
 function slug(value: string): string {
   return value.toLowerCase().replace(/[^a-z0-9-]+/g, "-").replace(/^-|-$/g, "") || "project";
+}
+
+function tilesetForMap(project: KitsuneProject, map: KitsuneMap): TilesetAsset | undefined {
+  if (map.tilesetKey) return project.assets.tilesets[map.tilesetKey];
+  return Object.values(project.assets.tilesets)[0];
+}
+
+function tilesetKeyForSprite(project: KitsuneProject, sprite: SpriteAsset | undefined): string | undefined {
+  if (!sprite?.image) return undefined;
+  return Object.values(project.assets.tilesets).find((tileset) => tileset.image === sprite.image)?.key;
+}
+
+function tilePreviewStyle(tileset: TilesetAsset | undefined, tileValue: number): React.CSSProperties | undefined {
+  if (tileValue <= 0 || !isPreviewableTileset(tileset)) return undefined;
+  return framePreviewStyle({
+    image: tileset.image,
+    frame: tileValue - 1,
+    columns: tileset.columns,
+    rows: tileset.rows
+  });
+}
+
+function tileCellPreviewStyle(project: KitsuneProject, map: KitsuneMap, tile: TileValue): React.CSSProperties | undefined {
+  const resolved = resolveTile(project, map, tile);
+  return tilePreviewStyle(resolved.tileset, resolved.value);
+}
+
+function paintedTileValue(layer: EditorLayer, tileset: TilesetAsset | undefined, value: number): TileValue {
+  if (layer === "collision" || value === 0 || !tileset) return value;
+  return { tilesetKey: tileset.key, tile: value };
+}
+
+function resolveTile(project: KitsuneProject, map: KitsuneMap, tile: TileValue): { tileset?: TilesetAsset; value: number } {
+  if (typeof tile === "number") return { tileset: tilesetForMap(project, map), value: tile };
+  return { tileset: project.assets.tilesets[tile.tilesetKey] ?? tilesetForMap(project, map), value: tile.tile };
+}
+
+function tileNumber(tile: TileValue): number {
+  return typeof tile === "number" ? tile : tile.tile;
+}
+
+function tilePaletteValues(tileset: TilesetAsset | undefined): number[] {
+  if (!tileset?.columns || !tileset.rows) return [0, 1, 2, 3, 4];
+  return Array.from({ length: tileset.columns * tileset.rows + 1 }, (_, value) => value);
+}
+
+function tileLabel(tileset: TilesetAsset | undefined, value: number): string {
+  if (value === 0) return "Empty";
+  return `${tileset?.label ?? "Tile"} ${value}`;
+}
+
+function spritePreviewStyle(sprite: SpriteAsset | undefined): React.CSSProperties | undefined {
+  if (!isPreviewableSprite(sprite)) return undefined;
+  return framePreviewStyle(sprite);
+}
+
+function framePreviewStyle(asset: { image: string; frame: number; columns: number; rows: number }): React.CSSProperties {
+  const column = asset.frame % asset.columns;
+  const row = Math.floor(asset.frame / asset.columns);
+  const x = asset.columns > 1 ? (column / (asset.columns - 1)) * 100 : 0;
+  const y = asset.rows > 1 ? (row / (asset.rows - 1)) * 100 : 0;
+
+  return {
+    backgroundImage: `url(${asset.image})`,
+    backgroundSize: `${asset.columns * 100}% ${asset.rows * 100}%`,
+    backgroundPosition: `${x}% ${y}%`,
+    backgroundRepeat: "no-repeat"
+  };
+}
+
+function isPreviewableTileset(tileset: TilesetAsset | undefined): tileset is TilesetAsset & { image: string; columns: number; rows: number } {
+  return Boolean(tileset?.image && tileset.columns && tileset.rows);
+}
+
+function isPreviewableSprite(sprite: SpriteAsset | undefined): sprite is SpriteAsset & { image: string; frame: number; columns: number; rows: number } {
+  return Boolean(sprite?.image && sprite.frame !== undefined && sprite.columns && sprite.rows);
 }
 
 createRoot(document.getElementById("root")!).render(<App />);
