@@ -2,6 +2,13 @@ import { createEmptyLayer, type KitsuneProject } from "./index";
 
 const width = 14;
 const height = 10;
+const tinyDungeonSheet = "/assets/kenney/tiny-dungeon/Tilemap/tilemap_packed.png";
+const tinyTownSheet = "/assets/kenney/tiny-town/Tilemap/tilemap_packed.png";
+const rpgUrbanSheet = "/assets/kenney/rpg-urban-pack/Tilemap/tilemap_packed.png";
+
+function sprite(key: string, label: string, image: string, frame: number) {
+  return { key, label, image, frameWidth: 16, frameHeight: 16, frame, columns: 12, rows: 11 };
+}
 
 const ground = createEmptyLayer("ground", "Ground", width, height, 1);
 const decor = createEmptyLayer("decor", "Decor", width, height, 0);
@@ -28,14 +35,43 @@ export const sampleProject: KitsuneProject = {
   version: "0.1.0",
   assets: {
     tilesets: {
-      placeholder: { key: "placeholder", label: "Bundled Placeholder Tiles" }
+      "kenney-tiny-town": {
+        key: "kenney-tiny-town",
+        label: "Kenney Tiny Town",
+        image: tinyTownSheet,
+        tileSize: 16,
+        columns: 12,
+        rows: 11
+      },
+      "kenney-tiny-dungeon": {
+        key: "kenney-tiny-dungeon",
+        label: "Kenney Tiny Dungeon",
+        image: tinyDungeonSheet,
+        tileSize: 16,
+        columns: 12,
+        rows: 11
+      },
+      "kenney-rpg-urban-pack": {
+        key: "kenney-rpg-urban-pack",
+        label: "Kenney RPG Urban Pack",
+        image: rpgUrbanSheet,
+        tileSize: 16,
+        columns: 27,
+        rows: 18
+      }
     },
     sprites: {
-      hero: { key: "hero", label: "Hero" },
-      npc: { key: "npc", label: "Guide NPC" },
-      object: { key: "object", label: "Knowledge Object" },
-      door: { key: "door", label: "Door" },
-      trigger: { key: "trigger", label: "Battle Trigger" }
+      hero: sprite("hero", "Tiny Dungeon frame 73", tinyDungeonSheet, 72),
+      npc: sprite("npc", "Tiny Dungeon frame 74", tinyDungeonSheet, 73),
+      "npc-frame-75": sprite("npc-frame-75", "Tiny Dungeon frame 75", tinyDungeonSheet, 74),
+      "npc-frame-76": sprite("npc-frame-76", "Tiny Dungeon frame 76", tinyDungeonSheet, 75),
+      "npc-frame-85": sprite("npc-frame-85", "Tiny Dungeon frame 85", tinyDungeonSheet, 84),
+      "npc-frame-86": sprite("npc-frame-86", "Tiny Dungeon frame 86", tinyDungeonSheet, 85),
+      "npc-frame-87": sprite("npc-frame-87", "Tiny Dungeon frame 87", tinyDungeonSheet, 86),
+      "npc-frame-88": sprite("npc-frame-88", "Tiny Dungeon frame 88", tinyDungeonSheet, 87),
+      object: sprite("object", "Tiny Town frame 62", tinyTownSheet, 61),
+      door: sprite("door", "Tiny Town frame 43", tinyTownSheet, 42),
+      trigger: sprite("trigger", "Tiny Dungeon frame 67", tinyDungeonSheet, 66)
     }
   },
   start: {
@@ -49,6 +85,7 @@ export const sampleProject: KitsuneProject = {
       width,
       height,
       tileSize: 32,
+      tilesetKey: "kenney-tiny-town",
       layers: { ground, decor, collision },
       spawns: {
         start: { x: 2, y: 7 },
@@ -126,6 +163,7 @@ export const sampleProject: KitsuneProject = {
       width: 10,
       height: 8,
       tileSize: 32,
+      tilesetKey: "kenney-tiny-dungeon",
       layers: {
         ground: createEmptyLayer("ground", "Ground", 10, 8, 1),
         decor: createEmptyLayer("decor", "Decor", 10, 8, 0),

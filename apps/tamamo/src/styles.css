@@ -163,6 +163,8 @@ label {
   width: 34px;
   height: 34px;
   padding: 0;
+  background-color: #1b2320;
+  image-rendering: pixelated;
 }
 
 .cell.selected {
@@ -184,13 +186,9 @@ label {
 
 .decor {
   position: absolute;
-  inset: 8px;
-  border-radius: 50%;
-  background: #f2c14e;
-}
-
-.decor-3 {
-  background: #69b6d1;
+  inset: 0;
+  image-rendering: pixelated;
+  pointer-events: none;
 }
 
 .entity-dot {
@@ -202,12 +200,105 @@ label {
   color: #14110f;
   font-size: 0.7rem;
   font-weight: 800;
+  image-rendering: pixelated;
+}
+
+.entity-dot.sprite {
+  inset: 2px;
+  border-radius: 0;
+  color: transparent;
 }
 
 .entity-dot.npc { background: #f2c14e; }
 .entity-dot.object { background: #d7ede4; }
 .entity-dot.door { background: #b66d35; color: #fff7ec; }
 .entity-dot.trigger { background: #d45757; color: #fff7ec; }
+
+.sprite-field {
+  display: grid;
+  grid-template-columns: 42px 1fr auto;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.sprite-preview {
+  width: 42px;
+  aspect-ratio: 1;
+  border: 1px solid #52645e;
+  border-radius: 6px;
+  background-color: #111715;
+  image-rendering: pixelated;
+}
+
+.sprite-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+  background: rgba(8, 12, 11, 0.72);
+}
+
+.sprite-modal {
+  width: min(920px, calc(100vw - 2rem));
+  max-height: min(760px, calc(100vh - 2rem));
+  display: grid;
+  grid-template-rows: auto 1fr;
+  border: 1px solid #52645e;
+  border-radius: 8px;
+  background: #18211f;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.45);
+}
+
+.sprite-modal header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1rem;
+  border-bottom: 1px solid #33443e;
+}
+
+.sprite-modal h2,
+.sprite-modal h3 {
+  margin: 0;
+}
+
+.sprite-modal-body {
+  display: grid;
+  gap: 1rem;
+  overflow: auto;
+  padding: 1rem;
+}
+
+.tileset-switcher {
+  max-width: 360px;
+}
+
+.sprite-frame-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(42px, 1fr));
+  gap: 0.35rem;
+}
+
+.sprite-frame-grid button {
+  display: grid;
+  place-items: center;
+  aspect-ratio: 1;
+  padding: 0.25rem;
+}
+
+.sprite-frame-grid .active {
+  border-color: #f2c14e;
+  box-shadow: 0 0 0 2px rgba(242, 193, 78, 0.2);
+}
+
+.sprite-choice-preview {
+  width: 100%;
+  aspect-ratio: 1;
+  image-rendering: pixelated;
+}
 
 .segmented {
   display: grid;
@@ -223,8 +314,16 @@ label {
 
 .swatches {
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
-  gap: 0.35rem;
+  grid-template-columns: repeat(auto-fill, minmax(30px, 1fr));
+  gap: 0.3rem;
+  max-height: 260px;
+  overflow: auto;
+  padding: 0.15rem;
+}
+
+.swatches button {
+  aspect-ratio: 1;
+  padding: 0.2rem;
 }
 
 .tile-swatch {
@@ -232,6 +331,7 @@ label {
   width: 100%;
   aspect-ratio: 1;
   border-radius: 4px;
+  image-rendering: pixelated;
 }
 
 .validation,

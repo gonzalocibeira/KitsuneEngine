@@ -7,10 +7,18 @@ export const positionSchema = z.object({
   y: z.number().int().nonnegative()
 });
 
+export const tileValueSchema = z.union([
+  z.number().int().nonnegative(),
+  z.object({
+    tilesetKey: z.string().min(1),
+    tile: z.number().int().nonnegative()
+  })
+]);
+
 export const tileLayerSchema = z.object({
   id: z.string().min(1),
   name: z.string().min(1),
-  tiles: z.array(z.array(z.number().int().nonnegative()))
+  tiles: z.array(z.array(tileValueSchema))
 });
 
 export type EventCommand =
@@ -71,6 +79,7 @@ export const mapSchema = z.object({
   width: z.number().int().positive(),
   height: z.number().int().positive(),
   tileSize: z.number().int().positive(),
+  tilesetKey: z.string().min(1).optional(),
   layers: z.object({
     ground: tileLayerSchema,
     decor: tileLayerSchema,
@@ -100,9 +109,29 @@ export const battleSchema = z.object({
   enemyHp: z.number().int().positive().default(3)
 });
 
+export const tilesetAssetSchema = z.object({
+  key: z.string().min(1),
+  label: z.string().min(1),
+  image: z.string().min(1).optional(),
+  tileSize: z.number().int().positive().optional(),
+  columns: z.number().int().positive().optional(),
+  rows: z.number().int().positive().optional()
+});
+
+export const spriteAssetSchema = z.object({
+  key: z.string().min(1),
+  label: z.string().min(1),
+  image: z.string().min(1).optional(),
+  frameWidth: z.number().int().positive().optional(),
+  frameHeight: z.number().int().positive().optional(),
+  frame: z.number().int().nonnegative().optional(),
+  columns: z.number().int().positive().optional(),
+  rows: z.number().int().positive().optional()
+});
+
 export const assetManifestSchema = z.object({
-  tilesets: z.record(z.object({ key: z.string().min(1), label: z.string().min(1) })),
-  sprites: z.record(z.object({ key: z.string().min(1), label: z.string().min(1) }))
+  tilesets: z.record(tilesetAssetSchema),
+  sprites: z.record(spriteAssetSchema)
 });
 
 export const kitsuneProjectSchema = z.object({
@@ -121,10 +150,13 @@ export const kitsuneProjectSchema = z.object({
 });
 
 export type Position = z.infer<typeof positionSchema>;
+export type TileValue = z.infer<typeof tileValueSchema>;
 export type Entity = z.infer<typeof entitySchema>;
 export type KitsuneMap = z.infer<typeof mapSchema>;
 export type KnowledgeEntry = z.infer<typeof knowledgeSchema>;
 export type BattleDefinition = z.infer<typeof battleSchema>;
+export type TilesetAsset = z.infer<typeof tilesetAssetSchema>;
+export type SpriteAsset = z.infer<typeof spriteAssetSchema>;
 export type KitsuneProject = z.infer<typeof kitsuneProjectSchema>;
 
 export type ValidationResult =
@@ -153,6 +185,8 @@ export function validateReferences(project: KitsuneProject): string[] {
   const mapIds = new Set(project.maps.map((map) => map.id));
   const knowledgeIds = new Set(project.knowledge.map((entry) => entry.id));
   const battleIds = new Set(project.battles.map((battle) => battle.id));
+  const tilesetKeys = new Set(Object.keys(project.assets.tilesets));
+  const spriteKeys = new Set(Object.keys(project.assets.sprites));
 
   if (!mapIds.has(project.start.mapId)) {
     issues.push(`start.mapId references missing map "${project.start.mapId}"`);
@@ -164,6 +198,10 @@ export function validateReferences(project: KitsuneProject): string[] {
   }
 
   for (const map of project.maps) {
+    if (map.tilesetKey && !tilesetKeys.has(map.tilesetKey)) {
+      issues.push(`${map.id}.tilesetKey references missing tileset "${map.tilesetKey}"`);
+    }
+
     for (const [layerKey, layer] of Object.entries(map.layers)) {
       if (layer.tiles.length !== map.height) {
         issues.push(`${map.id}.${layerKey} height is ${layer.tiles.length}, expected ${map.height}`);
@@ -172,12 +210,20 @@ export function validateReferences(project: KitsuneProject): string[] {
         if (row.length !== map.width) {
           issues.push(`${map.id}.${layerKey}[${rowIndex}] width is ${row.length}, expected ${map.width}`);
         }
+        for (const [columnIndex, tile] of row.entries()) {
+          if (typeof tile === "object" && !tilesetKeys.has(tile.tilesetKey)) {
+            issues.push(`${map.id}.${layerKey}[${rowIndex}][${columnIndex}] references missing tileset "${tile.tilesetKey}"`);
+          }
+        }
       }
     }
 
     for (const entity of map.entities) {
       if (entity.position.x >= map.width || entity.position.y >= map.height) {
         issues.push(`${map.id}.${entity.id} is outside map bounds`);
+      }
+      if (entity.spriteKey && !spriteKeys.has(entity.spriteKey)) {
+        issues.push(`${map.id}.${entity.id} references missing sprite "${entity.spriteKey}"`);
       }
       validateCommands(entity.event, { issues, mapIds, knowledgeIds, battleIds, context: `${map.id}.${entity.id}` });
     }
@@ -221,7 +267,7 @@ function validateCommands(
   }
 }
 
-export function createEmptyLayer(id: string, name: string, width: number, height: number, fill = 0) {
+export function createEmptyLayer(id: string, name: string, width: number, height: number, fill: TileValue = 0) {
   return {
     id,
     name,

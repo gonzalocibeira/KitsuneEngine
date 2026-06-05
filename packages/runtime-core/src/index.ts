@@ -1,4 +1,4 @@
-import type { BattleDefinition, Entity, EventCommand, KitsuneMap, KitsuneProject, KnowledgeEntry, Position } from "@kitsune/schema";
+import type { BattleDefinition, Entity, EventCommand, KitsuneMap, KitsuneProject, KnowledgeEntry, Position, TileValue } from "@kitsune/schema";
 
 export type DialogueMessage = {
   speaker?: string;
@@ -286,9 +286,13 @@ export function isWalkable(map: KitsuneMap, position: Position): boolean {
   if (position.x < 0 || position.y < 0 || position.x >= map.width || position.y >= map.height) {
     return false;
   }
-  return map.layers.collision.tiles[position.y]?.[position.x] === 0;
+  return tileNumber(map.layers.collision.tiles[position.y]?.[position.x] ?? 0) === 0;
 }
 
 export function normalizeAnswer(answer: string): string {
   return answer.trim().toLocaleLowerCase();
+}
+
+function tileNumber(tile: TileValue): number {
+  return typeof tile === "number" ? tile : tile.tile;
 }
