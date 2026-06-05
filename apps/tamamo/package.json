@@ -1,0 +1,11 @@
+{
+  "name": "@kitsune/tamamo",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@kitsune/schema": "0.0.0",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0"
+  }
+}
