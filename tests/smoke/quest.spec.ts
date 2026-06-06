@@ -61,6 +61,27 @@ test("Tamamo paints map tiles by dragging", async ({ page }) => {
   expect(exported.maps[0].layers.ground.tiles[0].slice(0, 7)).toEqual([0, 0, 0, 0, 1, 0, 1]);
 });
 
+test("Tamamo confirms before replacing the project with sample content", async ({ page }) => {
+  await page.goto("http://127.0.0.1:5173");
+  const title = page.locator(".title-input");
+  await title.fill("Unsaved project");
+
+  await page.getByRole("button", { name: "Sample", exact: true }).click();
+  const confirmation = page.getByRole("dialog", { name: "Load sample content?" });
+  await expect(confirmation).toBeVisible();
+  await expect(confirmation).toContainText("Any unsaved changes will be lost.");
+  await expect(confirmation.getByRole("button", { name: "Cancel" })).toBeFocused();
+  await confirmation.getByRole("button", { name: "Cancel" }).click();
+  await expect(confirmation).toBeHidden();
+  await expect(title).toHaveValue("Unsaved project");
+
+  await page.getByRole("button", { name: "Sample", exact: true }).click();
+  await confirmation.getByRole("button", { name: "Load Sample" }).click();
+  await expect(confirmation).toBeHidden();
+  await expect(title).not.toHaveValue("Unsaved project");
+  await expect(page.getByText("Sample quest loaded.")).toBeVisible();
+});
+
 test("Tamamo export loads and plays in Kuzunoha", async ({ page }) => {
   await page.goto("http://127.0.0.1:5173");
   await expect(page.getByText("Project is export-ready.")).toBeVisible();

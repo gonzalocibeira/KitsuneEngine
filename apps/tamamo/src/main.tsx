@@ -45,6 +45,7 @@ function App() {
   const [selectedSpawnId, setSelectedSpawnId] = React.useState(sampleProject.start.spawnId);
   const [rightTab, setRightTab] = React.useState<RightPanelTab>("entities");
   const [notice, setNotice] = React.useState("Sample quest loaded.");
+  const [sampleConfirmationOpen, setSampleConfirmationOpen] = React.useState(false);
   const paintingRef = React.useRef(false);
   const lastPaintedCellRef = React.useRef("");
 
@@ -273,7 +274,7 @@ function App() {
           />
         </div>
         <div className="actions">
-          <button onClick={loadSample}>Sample</button>
+          <button onClick={() => setSampleConfirmationOpen(true)}>Sample</button>
           <button onClick={saveDraft}>Save Draft</button>
           <button onClick={loadDraft}>Load Draft</button>
           <label className="file-button">
@@ -522,7 +523,74 @@ function App() {
           {rightTab === "player" && <PlayerPanel project={project} updateProject={updateProject} />}
         </aside>
       </section>
+
+      {sampleConfirmationOpen && (
+        <ConfirmationDialog
+          title="Load sample content?"
+          confirmLabel="Load Sample"
+          onCancel={() => setSampleConfirmationOpen(false)}
+          onConfirm={() => {
+            setSampleConfirmationOpen(false);
+            loadSample();
+          }}
+        >
+          <p>This action may replace your current project data. Any unsaved changes will be lost.</p>
+          <p>Do you want to continue?</p>
+        </ConfirmationDialog>
+      )}
     </main>
+  );
+}
+
+function ConfirmationDialog({
+  title,
+  children,
+  confirmLabel = "Confirm",
+  cancelLabel = "Cancel",
+  onConfirm,
+  onCancel
+}: {
+  title: string;
+  children: React.ReactNode;
+  confirmLabel?: string;
+  cancelLabel?: string;
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  const cancelButtonRef = React.useRef<HTMLButtonElement>(null);
+
+  React.useEffect(() => {
+    cancelButtonRef.current?.focus();
+
+    function cancelOnEscape(event: KeyboardEvent) {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      onCancel();
+    }
+
+    window.addEventListener("keydown", cancelOnEscape);
+    return () => window.removeEventListener("keydown", cancelOnEscape);
+  }, [onCancel]);
+
+  return (
+    <div
+      className="modal-backdrop"
+      role="presentation"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) onCancel();
+      }}
+    >
+      <section className="confirmation-dialog" role="dialog" aria-modal="true" aria-labelledby="confirmation-dialog-title">
+        <header>
+          <h2 id="confirmation-dialog-title">{title}</h2>
+        </header>
+        <div className="confirmation-dialog-body">{children}</div>
+        <footer>
+          <button ref={cancelButtonRef} onClick={onCancel}>{cancelLabel}</button>
+          <button className="danger-action" onClick={onConfirm}>{confirmLabel}</button>
+        </footer>
+      </section>
+    </div>
   );
 }
 
