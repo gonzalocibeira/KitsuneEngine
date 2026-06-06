@@ -110,6 +110,12 @@ label {
   gap: 0.5rem;
 }
 
+.map-size-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.5rem;
+}
+
 .file-button input {
   display: none;
 }
