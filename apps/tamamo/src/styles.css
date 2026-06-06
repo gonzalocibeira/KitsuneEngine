@@ -445,6 +445,7 @@ label {
 .validation,
 .stack,
 .content-panel,
+.map-manager,
 .event-editor,
 .focused-editor,
 .question-list,
@@ -452,6 +453,33 @@ label {
 .placement-controls {
   display: grid;
   gap: 0.7rem;
+}
+
+.map-manager {
+  border-top: 1px solid #3b4d46;
+  border-bottom: 1px solid #3b4d46;
+  padding: 0.8rem 0;
+}
+
+.map-manager h3 {
+  margin: 0;
+}
+
+.map-empty-state {
+  width: min(480px, 100%);
+  display: grid;
+  justify-items: center;
+  gap: 0.8rem;
+  border: 1px dashed #52645e;
+  border-radius: 10px;
+  padding: 2rem;
+  color: #c9d4cf;
+  text-align: center;
+}
+
+.map-empty-state h2,
+.map-empty-state p {
+  margin: 0;
 }
 
 .key-progression {
