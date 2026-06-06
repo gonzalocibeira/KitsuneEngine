@@ -244,9 +244,7 @@ export const sampleProject: KitsuneProject = {
       name: "Memory Trial",
       enemyName: "Restless Page",
       victoryFlag: "trial_complete",
-      requiredKnowledgeIds: ["observe", "attention", "spacing", "context"],
-      playerHp: 3,
-      enemyHp: 3
+      requiredKnowledgeIds: ["observe", "attention", "spacing", "context"]
     }
   ]
 };

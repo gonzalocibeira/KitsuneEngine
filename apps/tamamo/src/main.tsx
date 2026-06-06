@@ -20,13 +20,13 @@ const draftKey = "tamamo:draft";
 const entityKinds: Entity["kind"][] = ["npc", "object", "door", "trigger"];
 
 type EditorLayer = "ground" | "decor" | "collision";
-type ToolMode = "paint" | "entity" | "spawn";
+type ToolMode = "paint" | "spawn";
 type RightPanelTab = "entities" | "knowledge" | "battles" | "player";
 const mapLayerKeys: EditorLayer[] = ["ground", "decor", "collision"];
 const rightPanelTabs: Array<{ id: RightPanelTab; label: string }> = [
-  { id: "entities", label: "Entities" },
-  { id: "knowledge", label: "Knowledge" },
-  { id: "battles", label: "Battles" },
+  { id: "entities", label: "Entity" },
+  { id: "knowledge", label: "Notes" },
+  { id: "battles", label: "Battle" },
   { id: "player", label: "Player" }
 ];
 
@@ -38,6 +38,7 @@ function App() {
   const [brushTilesetKey, setBrushTilesetKey] = React.useState(sampleProject.maps[0].tilesetKey ?? Object.keys(sampleProject.assets.tilesets)[0] ?? "");
   const [mode, setMode] = React.useState<ToolMode>("paint");
   const [entityKind, setEntityKind] = React.useState<Entity["kind"]>("object");
+  const [entityPlacementArmed, setEntityPlacementArmed] = React.useState(false);
   const [selectedEntityId, setSelectedEntityId] = React.useState(sampleProject.maps[0].entities[0]?.id ?? "");
   const [selectedSpawnId, setSelectedSpawnId] = React.useState(sampleProject.start.spawnId);
   const [rightTab, setRightTab] = React.useState<RightPanelTab>("entities");
@@ -117,6 +118,24 @@ function App() {
   }
 
   function onCellClick(x: number, y: number) {
+    if (entityPlacementArmed) {
+      const id = `${entityKind}-${Date.now().toString(36)}`;
+      const entity: Entity = {
+        id,
+        name: `New ${entityKind}`,
+        kind: entityKind,
+        position: { x, y },
+        spriteKey: entityKind,
+        event: defaultEvent(entityKind, project)
+      };
+      updateSelectedMap((map) => {
+        map.entities.push(entity);
+      });
+      setSelectedEntityId(id);
+      setEntityPlacementArmed(false);
+      return;
+    }
+
     if (mode === "paint") {
       updateSelectedMap((map) => {
         map.layers[layer].tiles[y][x] = paintedTileValue(layer, brushTileset, tileValue);
@@ -139,19 +158,6 @@ function App() {
       return;
     }
 
-    const id = `${entityKind}-${Date.now().toString(36)}`;
-    const entity: Entity = {
-      id,
-      name: `New ${entityKind}`,
-      kind: entityKind,
-      position: { x, y },
-      spriteKey: entityKind,
-      event: defaultEvent(entityKind, project)
-    };
-    updateSelectedMap((map) => {
-      map.entities.push(entity);
-    });
-    setSelectedEntityId(id);
   }
 
   function selectMap(mapId: string) {
@@ -314,13 +320,10 @@ function App() {
           </div>
 
           <div className="segmented tool-tabs">
-            <button className={mode === "paint" ? "active" : ""} onClick={() => setMode("paint")}>
+            <button className={mode === "paint" && !entityPlacementArmed ? "active" : ""} onClick={() => { setMode("paint"); setEntityPlacementArmed(false); }}>
               Paint
             </button>
-            <button className={mode === "entity" ? "active" : ""} onClick={() => setMode("entity")}>
-              Entity
-            </button>
-            <button className={mode === "spawn" ? "active" : ""} onClick={() => setMode("spawn")}>
+            <button className={mode === "spawn" && !entityPlacementArmed ? "active" : ""} onClick={() => { setMode("spawn"); setEntityPlacementArmed(false); }}>
               Spawn
             </button>
           </div>
@@ -368,19 +371,6 @@ function App() {
             </>
           )}
 
-          {mode === "entity" && (
-            <label>
-              Entity Kind
-              <select value={entityKind} onChange={(event) => setEntityKind(event.target.value as Entity["kind"])}>
-                {entityKinds.map((kind) => (
-                  <option key={kind} value={kind}>
-                    {kind}
-                  </option>
-                ))}
-              </select>
-            </label>
-          )}
-
           {mode === "spawn" && (
             <SpawnPanel
               map={selectedMap}
@@ -410,7 +400,13 @@ function App() {
                     key={`${x}-${y}`}
                     className={`cell ${blocked ? "blocked" : ""} ${selected ? "selected" : ""}`}
                     style={tileCellPreviewStyle(project, selectedMap, groundTile)}
-                    onClick={() => (entity && mode === "entity" ? setSelectedEntityId(entity.id) : onCellClick(x, y))}
+                    onClick={() => {
+                      if (entity && rightTab === "entities" && !entityPlacementArmed) {
+                        setSelectedEntityId(entity.id);
+                        return;
+                      }
+                      onCellClick(x, y);
+                    }}
                     title={`${x}, ${y}`}
                   >
                     {tileNumber(decorTile) > 0 && <span className="decor" style={tileCellPreviewStyle(project, selectedMap, decorTile)} />}
@@ -430,7 +426,14 @@ function App() {
         <aside className="panel right-panel">
           <nav className="tab-strip" aria-label="Editor sections">
             {rightPanelTabs.map((tab) => (
-              <button key={tab.id} className={rightTab === tab.id ? "active" : ""} onClick={() => setRightTab(tab.id)}>
+              <button
+                key={tab.id}
+                className={rightTab === tab.id ? "active" : ""}
+                onClick={() => {
+                  setRightTab(tab.id);
+                  if (tab.id !== "entities") setEntityPlacementArmed(false);
+                }}
+              >
                 {tab.label}
               </button>
             ))}
@@ -442,6 +445,10 @@ function App() {
               updateProject={updateProject}
               onSelect={setSelectedEntityId}
               entities={selectedMap.entities}
+              entityKind={entityKind}
+              setEntityKind={setEntityKind}
+              placementArmed={entityPlacementArmed}
+              setPlacementArmed={setEntityPlacementArmed}
               updateEntity={updateSelectedEntity}
               deleteEntity={() => {
                 updateSelectedMap((map) => {
@@ -603,6 +610,10 @@ function EntityPanel({
   project,
   updateProject,
   onSelect,
+  entityKind,
+  setEntityKind,
+  placementArmed,
+  setPlacementArmed,
   updateEntity,
   deleteEntity
 }: {
@@ -611,6 +622,10 @@ function EntityPanel({
   project: KitsuneProject;
   updateProject: (updater: (project: KitsuneProject) => KitsuneProject) => void;
   onSelect: (id: string) => void;
+  entityKind: Entity["kind"];
+  setEntityKind: (kind: Entity["kind"]) => void;
+  placementArmed: boolean;
+  setPlacementArmed: (armed: boolean) => void;
   updateEntity: (updater: (entity: Entity) => void) => void;
   deleteEntity: () => void;
 }) {
@@ -626,6 +641,17 @@ function EntityPanel({
   return (
     <section>
       <h2>Entities</h2>
+      <div className="placement-controls">
+        <label>
+          New Entity Kind
+          <select value={entityKind} onChange={(event) => setEntityKind(event.target.value as Entity["kind"])}>
+            {entityKinds.map((kind) => <option key={kind} value={kind}>{kind}</option>)}
+          </select>
+        </label>
+        <button className={placementArmed ? "active" : "primary"} onClick={() => setPlacementArmed(!placementArmed)}>
+          {placementArmed ? "Cancel Placement" : "Place on Map"}
+        </button>
+      </div>
       <select value={entity?.id ?? ""} onChange={(event) => onSelect(event.target.value)}>
         <option value="">Select entity</option>
         {entities.map((candidate) => (
@@ -842,17 +868,36 @@ function EventEditor({
 }
 
 function KnowledgePanel({ project, updateProject }: { project: KitsuneProject; updateProject: (updater: (project: KitsuneProject) => KitsuneProject) => void }) {
-  function updateKnowledge(index: number, updater: (entry: KnowledgeEntry) => void) {
+  const [selectedKnowledgeId, setSelectedKnowledgeId] = React.useState(project.knowledge[0]?.id ?? "");
+  const [battleToAdd, setBattleToAdd] = React.useState("");
+  const entry = project.knowledge.find((candidate) => candidate.id === selectedKnowledgeId) ?? project.knowledge[0];
+  const containingBattles = project.battles.filter((battle) => entry && battle.requiredKnowledgeIds.includes(entry.id));
+  const availableBattles = project.battles.filter((battle) => entry && !battle.requiredKnowledgeIds.includes(entry.id));
+  const deleteBlockedReason = noteDeleteBlockedReason(project, entry?.id);
+
+  React.useEffect(() => {
+    if (!entry && project.knowledge[0]) setSelectedKnowledgeId(project.knowledge[0].id);
+  }, [entry, project.knowledge]);
+
+  React.useEffect(() => {
+    if (!availableBattles.some((battle) => battle.id === battleToAdd)) {
+      setBattleToAdd(availableBattles[0]?.id ?? "");
+    }
+  }, [availableBattles, battleToAdd]);
+
+  function updateKnowledge(updater: (entry: KnowledgeEntry) => void) {
     updateProject((draft) => {
-      updater(draft.knowledge[index]);
+      const target = draft.knowledge.find((candidate) => candidate.id === entry?.id);
+      if (target) updater(target);
       return draft;
     });
   }
 
   function addKnowledge() {
+    const id = uniqueId("knowledge", project.knowledge.map((candidate) => candidate.id));
     updateProject((draft) => {
       draft.knowledge.push({
-        id: `knowledge-${Date.now().toString(36)}`,
+        id,
         title: "New Knowledge",
         summary: "Short summary",
         prompt: "What is the answer?",
@@ -862,21 +907,62 @@ function KnowledgePanel({ project, updateProject }: { project: KitsuneProject; u
       });
       return draft;
     });
+    setSelectedKnowledgeId(id);
+  }
+
+  function addToBattle() {
+    if (!entry || !battleToAdd) return;
+    updateProject((draft) => {
+      const battle = draft.battles.find((candidate) => candidate.id === battleToAdd);
+      if (battle && !battle.requiredKnowledgeIds.includes(entry.id)) battle.requiredKnowledgeIds.push(entry.id);
+      return draft;
+    });
+  }
+
+  function removeFromBattle(battleId: string) {
+    if (!entry) return;
+    updateProject((draft) => {
+      const battle = draft.battles.find((candidate) => candidate.id === battleId);
+      if (battle && battle.requiredKnowledgeIds.length > 1) {
+        battle.requiredKnowledgeIds = battle.requiredKnowledgeIds.filter((id) => id !== entry.id);
+      }
+      return draft;
+    });
+  }
+
+  function deleteKnowledge() {
+    if (!entry || deleteBlockedReason) return;
+    let nextId = "";
+    updateProject((draft) => {
+      const index = draft.knowledge.findIndex((candidate) => candidate.id === entry.id);
+      removeKnowledgeReferences(draft, entry.id);
+      draft.knowledge = draft.knowledge.filter((candidate) => candidate.id !== entry.id);
+      nextId = draft.knowledge[Math.min(index, draft.knowledge.length - 1)]?.id ?? "";
+      return draft;
+    });
+    setSelectedKnowledgeId(nextId);
   }
 
   return (
     <section className="content-panel">
-      <h2>Knowledge</h2>
-      {project.knowledge.map((entry, index) => (
-        <details key={entry.id}>
-          <summary>{entry.title}</summary>
-          <label>ID<input value={entry.id} onChange={(event) => updateKnowledge(index, (draft) => { draft.id = slug(event.target.value); })} /></label>
-          <label>Title<input value={entry.title} onChange={(event) => updateKnowledge(index, (draft) => { draft.title = event.target.value; })} /></label>
-          <label>Summary<input value={entry.summary} onChange={(event) => updateKnowledge(index, (draft) => { draft.summary = event.target.value; })} /></label>
-          <label>Prompt<input value={entry.prompt} onChange={(event) => updateKnowledge(index, (draft) => { draft.prompt = event.target.value; })} /></label>
-          <label>Answer<input value={entry.answer} onChange={(event) => updateKnowledge(index, (draft) => { draft.answer = event.target.value; })} /></label>
-          <label>Body<textarea value={entry.body} onChange={(event) => updateKnowledge(index, (draft) => { draft.body = event.target.value; })} /></label>
-          <label>Image URL<input value={entry.imageUrl ?? ""} onChange={(event) => updateKnowledge(index, (draft) => { setOptionalString(draft, "imageUrl", event.target.value); })} /></label>
+      <div className="panel-heading">
+        <h2>Notes</h2>
+        <button onClick={addKnowledge}>Add Note</button>
+      </div>
+      <label>
+        Note
+        <select value={entry?.id ?? ""} onChange={(event) => setSelectedKnowledgeId(event.target.value)}>
+          {project.knowledge.map((candidate) => <option key={candidate.id} value={candidate.id}>{candidate.title}</option>)}
+        </select>
+      </label>
+      {entry && (
+        <div className="focused-editor">
+          <label>Title<input value={entry.title} onChange={(event) => updateKnowledge((draft) => { draft.title = event.target.value; })} /></label>
+          <label>Summary<input value={entry.summary} onChange={(event) => updateKnowledge((draft) => { draft.summary = event.target.value; })} /></label>
+          <label>Question<input value={entry.prompt} onChange={(event) => updateKnowledge((draft) => { draft.prompt = event.target.value; })} /></label>
+          <label>Answer<input value={entry.answer} onChange={(event) => updateKnowledge((draft) => { draft.answer = event.target.value; })} /></label>
+          <label>Details<textarea value={entry.body} onChange={(event) => updateKnowledge((draft) => { draft.body = event.target.value; })} /></label>
+          <label>Image URL<input value={entry.imageUrl ?? ""} onChange={(event) => updateKnowledge((draft) => { setOptionalString(draft, "imageUrl", event.target.value); })} /></label>
           <label>
             Upload Image
             <input
@@ -888,7 +974,7 @@ function KnowledgePanel({ project, updateProject }: { project: KitsuneProject; u
                 const reader = new FileReader();
                 reader.addEventListener("load", () => {
                   if (typeof reader.result !== "string") return;
-                  updateKnowledge(index, (draft) => {
+                  updateKnowledge((draft) => {
                     draft.imageUrl = reader.result as string;
                     draft.imageAlt = draft.imageAlt || file.name;
                   });
@@ -898,112 +984,139 @@ function KnowledgePanel({ project, updateProject }: { project: KitsuneProject; u
               }}
             />
           </label>
-          <label>Image Alt<input value={entry.imageAlt ?? ""} onChange={(event) => updateKnowledge(index, (draft) => { setOptionalString(draft, "imageAlt", event.target.value); })} /></label>
           {entry.imageUrl && (
             <div className="knowledge-image-preview">
               <img src={entry.imageUrl} alt={entry.imageAlt || entry.title} />
-              <button type="button" onClick={() => updateKnowledge(index, (draft) => { delete draft.imageUrl; delete draft.imageAlt; })}>Remove Image</button>
+              <button type="button" onClick={() => updateKnowledge((draft) => { delete draft.imageUrl; delete draft.imageAlt; })}>Remove Image</button>
             </div>
           )}
-        </details>
-      ))}
-      <button onClick={addKnowledge}>Add Knowledge</button>
+          <section className="membership-list">
+            <h3>Battles</h3>
+            {containingBattles.length > 0 ? containingBattles.map((battle) => (
+              <div className="membership-row" key={battle.id}>
+                <span>{battle.name}</span>
+                <button
+                  disabled={battle.requiredKnowledgeIds.length === 1}
+                  title={battle.requiredKnowledgeIds.length === 1 ? "A battle must keep at least one note." : undefined}
+                  onClick={() => removeFromBattle(battle.id)}
+                >
+                  Remove
+                </button>
+              </div>
+            )) : <p className="muted">This note is not used by any battle.</p>}
+            {availableBattles.length > 0 && (
+              <div className="add-question-row">
+                <select value={battleToAdd} onChange={(event) => setBattleToAdd(event.target.value)}>
+                  {availableBattles.map((battle) => <option key={battle.id} value={battle.id}>{battle.name}</option>)}
+                </select>
+                <button onClick={addToBattle}>Add to Battle</button>
+              </div>
+            )}
+          </section>
+          <button className="danger" disabled={Boolean(deleteBlockedReason)} title={deleteBlockedReason} onClick={deleteKnowledge}>Delete Note</button>
+          {deleteBlockedReason && <p className="muted">{deleteBlockedReason}</p>}
+        </div>
+      )}
     </section>
   );
 }
 
 function BattlesPanel({ project, updateProject }: { project: KitsuneProject; updateProject: (updater: (project: KitsuneProject) => KitsuneProject) => void }) {
-  function updateBattle(index: number, updater: (battle: BattleDefinition) => void) {
+  const [selectedBattleId, setSelectedBattleId] = React.useState(project.battles[0]?.id ?? "");
+  const [knowledgeToAdd, setKnowledgeToAdd] = React.useState("");
+  const battle = project.battles.find((candidate) => candidate.id === selectedBattleId) ?? project.battles[0];
+  const availableKnowledge = project.knowledge.filter((entry) => !battle?.requiredKnowledgeIds.includes(entry.id));
+
+  React.useEffect(() => {
+    if (!battle && project.battles[0]) setSelectedBattleId(project.battles[0].id);
+  }, [battle, project.battles]);
+
+  React.useEffect(() => {
+    if (!availableKnowledge.some((entry) => entry.id === knowledgeToAdd)) {
+      setKnowledgeToAdd(availableKnowledge[0]?.id ?? "");
+    }
+  }, [availableKnowledge, knowledgeToAdd]);
+
+  function updateBattle(updater: (battle: BattleDefinition) => void) {
     updateProject((draft) => {
-      updater(draft.battles[index]);
+      const target = draft.battles.find((candidate) => candidate.id === battle?.id);
+      if (target) updater(target);
       return draft;
     });
   }
 
   function addBattle() {
+    const id = uniqueId("battle", project.battles.map((candidate) => candidate.id));
     updateProject((draft) => {
-      const id = uniqueId("battle", draft.battles.map((battle) => battle.id));
       draft.battles.push({
         id,
         name: "New Battle",
         enemyName: "Enemy",
         victoryFlag: `${id}_victory`,
-        requiredKnowledgeIds: [draft.knowledge[0]?.id ?? ""].filter(Boolean),
-        playerHp: draft.player.maxHp,
-        enemyHp: 3
+        requiredKnowledgeIds: [draft.knowledge[0]?.id ?? ""].filter(Boolean)
       });
       return draft;
     });
+    setSelectedBattleId(id);
   }
 
-  function deleteBattle(index: number) {
+  function deleteBattle() {
+    if (!battle) return;
+    let nextBattleId = "";
     updateProject((draft) => {
-      const [removed] = draft.battles.splice(index, 1);
-      if (removed) removeBattleReferences(draft, removed.id);
+      draft.battles = draft.battles.filter((candidate) => candidate.id !== battle.id);
+      removeBattleReferences(draft, battle.id);
+      nextBattleId = draft.battles[0]?.id ?? "";
       return draft;
     });
+    setSelectedBattleId(nextBattleId);
   }
 
   return (
     <section className="content-panel">
-      <h2>Battles</h2>
-      {project.battles.map((battle, index) => (
-        <details key={battle.id}>
-          <summary>{battle.name}</summary>
+      <div className="panel-heading">
+        <h2>Battle</h2>
+        <button onClick={addBattle}>Add Battle</button>
+      </div>
+      {project.battles.length > 0 ? (
+        <>
           <label>
-            ID
-            <input
-              value={battle.id}
-              onChange={(event) => {
-                const nextId = slug(event.target.value);
-                const previousId = battle.id;
-                updateProject((draft) => {
-                  const target = draft.battles[index];
-                  if (!target || nextId === previousId || draft.battles.some((candidate, current) => current !== index && candidate.id === nextId)) return draft;
-                  target.id = nextId;
-                  retargetBattleReferences(draft, previousId, nextId);
-                  return draft;
-                });
-              }}
-            />
+            Battle
+            <select value={battle?.id ?? ""} onChange={(event) => setSelectedBattleId(event.target.value)}>
+              {project.battles.map((candidate) => <option key={candidate.id} value={candidate.id}>{candidate.name}</option>)}
+            </select>
           </label>
-          <label>Name<input value={battle.name} onChange={(event) => updateBattle(index, (draft) => { draft.name = event.target.value; })} /></label>
-          <label>Enemy Name<input value={battle.enemyName} onChange={(event) => updateBattle(index, (draft) => { draft.enemyName = event.target.value; })} /></label>
-          <label>Victory Flag<input value={battle.victoryFlag} onChange={(event) => updateBattle(index, (draft) => { draft.victoryFlag = slug(event.target.value).replaceAll("-", "_"); })} /></label>
-          <div className="coord-row">
-            <label>
-              Player HP
-              <input type="number" min="1" value={battle.playerHp} onChange={(event) => updateBattle(index, (draft) => { draft.playerHp = positiveInt(event.target.value); })} />
-            </label>
-            <label>
-              Enemy HP
-              <input type="number" min="1" value={battle.enemyHp} onChange={(event) => updateBattle(index, (draft) => { draft.enemyHp = positiveInt(event.target.value); })} />
-            </label>
-          </div>
-          <fieldset className="checkbox-list">
-            <legend>Required Knowledge</legend>
-            {project.knowledge.map((entry) => (
-              <label key={entry.id} className="checkbox-row">
-                <input
-                  type="checkbox"
-                  checked={battle.requiredKnowledgeIds.includes(entry.id)}
-                  onChange={(event) =>
-                    updateBattle(index, (draft) => {
-                      draft.requiredKnowledgeIds = event.target.checked
-                        ? [...draft.requiredKnowledgeIds, entry.id]
-                        : draft.requiredKnowledgeIds.filter((id) => id !== entry.id);
-                      if (draft.requiredKnowledgeIds.length === 0) draft.requiredKnowledgeIds = [project.knowledge[0]?.id ?? ""].filter(Boolean);
-                    })
-                  }
-                />
-                {entry.title}
-              </label>
-            ))}
-          </fieldset>
-          <button className="danger" onClick={() => deleteBattle(index)}>Delete Battle</button>
-        </details>
-      ))}
-      <button onClick={addBattle}>Add Battle</button>
+          {battle && (
+            <div className="focused-editor">
+              <label>Name<input value={battle.name} onChange={(event) => updateBattle((draft) => { draft.name = event.target.value; })} /></label>
+              <label>Enemy Name<input value={battle.enemyName} onChange={(event) => updateBattle((draft) => { draft.enemyName = event.target.value; })} /></label>
+              <section className="question-list">
+                <h3>Notes</h3>
+                {battle.requiredKnowledgeIds.map((knowledgeId) => {
+                  const entry = project.knowledge.find((candidate) => candidate.id === knowledgeId);
+                  return (
+                    <div className="membership-row" key={knowledgeId}>
+                      <span>{entry?.title ?? knowledgeId}</span>
+                      <button disabled={battle.requiredKnowledgeIds.length === 1} onClick={() => updateBattle((draft) => { draft.requiredKnowledgeIds = draft.requiredKnowledgeIds.filter((id) => id !== knowledgeId); })}>Remove</button>
+                    </div>
+                  );
+                })}
+                {availableKnowledge.length > 0 && (
+                  <div className="add-question-row">
+                    <select value={knowledgeToAdd} onChange={(event) => setKnowledgeToAdd(event.target.value)}>
+                      {availableKnowledge.map((entry) => <option key={entry.id} value={entry.id}>{entry.title}</option>)}
+                    </select>
+                    <button onClick={() => updateBattle((draft) => { draft.requiredKnowledgeIds.push(knowledgeToAdd); })}>Add Question</button>
+                  </div>
+                )}
+              </section>
+              <button className="danger" onClick={deleteBattle}>Delete Battle</button>
+            </div>
+          )}
+        </>
+      ) : (
+        <p className="muted">Add a battle to configure its questions.</p>
+      )}
     </section>
   );
 }
@@ -1142,27 +1255,37 @@ function removeBattleReferences(project: KitsuneProject, battleId: string) {
   }
 }
 
-function retargetBattleReferences(project: KitsuneProject, oldBattleId: string, nextBattleId: string) {
+function noteDeleteBlockedReason(project: KitsuneProject, knowledgeId: string | undefined): string | undefined {
+  if (!knowledgeId) return "Select a note to delete.";
+  if (project.knowledge.length <= 1) return "A project must keep at least one note.";
+  const blockingBattle = project.battles.find((battle) => battle.requiredKnowledgeIds.length === 1 && battle.requiredKnowledgeIds[0] === knowledgeId);
+  if (blockingBattle) return `"${blockingBattle.name}" must keep at least one note.`;
+  return undefined;
+}
+
+function removeKnowledgeReferences(project: KitsuneProject, knowledgeId: string) {
+  for (const battle of project.battles) {
+    battle.requiredKnowledgeIds = battle.requiredKnowledgeIds.filter((id) => id !== knowledgeId);
+  }
   for (const map of project.maps) {
     for (const entity of map.entities) {
-      entity.event = retargetBattleCommands(entity.event, oldBattleId, nextBattleId);
+      entity.event = removeKnowledgeCommands(entity.event, knowledgeId);
     }
   }
 }
 
-function retargetBattleCommands(commands: EventCommand[], oldBattleId: string, nextBattleId: string): EventCommand[] {
-  return commands.map((command) => {
-    if (command.type === "startBattle" && command.battleId === oldBattleId) {
-      return { ...command, battleId: nextBattleId };
-    }
+function removeKnowledgeCommands(commands: EventCommand[], knowledgeId: string): EventCommand[] {
+  return commands.flatMap((command) => {
+    if (command.type === "grantKnowledge" && command.knowledgeId === knowledgeId) return [] as EventCommand[];
     if (command.type === "branch") {
-      return {
+      const nextCommand: EventCommand = {
         ...command,
-        then: retargetBattleCommands(command.then, oldBattleId, nextBattleId),
-        else: retargetBattleCommands(command.else ?? [], oldBattleId, nextBattleId)
+        then: removeKnowledgeCommands(command.then, knowledgeId),
+        else: removeKnowledgeCommands(command.else ?? [], knowledgeId)
       };
+      return [nextCommand];
     }
-    return command;
+    return [command];
   });
 }
 

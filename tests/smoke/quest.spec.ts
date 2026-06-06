@@ -6,13 +6,18 @@ test("Tamamo export loads and plays in Kuzunoha", async ({ page }) => {
   await page.goto("http://127.0.0.1:5173");
   await expect(page.getByText("Project is export-ready.")).toBeVisible();
   const editorTabs = page.getByLabel("Editor sections");
-  await expect(editorTabs.getByRole("button", { name: "Entities" })).toBeVisible();
-  await expect(editorTabs.getByRole("button", { name: "Knowledge" })).toBeVisible();
-  await expect(editorTabs.getByRole("button", { name: "Battles" })).toBeVisible();
+  await expect(editorTabs.getByRole("button", { name: "Entity" })).toBeVisible();
+  await expect(editorTabs.getByRole("button", { name: "Notes" })).toBeVisible();
+  await expect(editorTabs.getByRole("button", { name: "Battle" })).toBeVisible();
   await expect(editorTabs.getByRole("button", { name: "Player" })).toBeVisible();
+  await expect(page.locator(".left-panel").getByRole("button", { name: "Entity" })).toHaveCount(0);
 
-  await editorTabs.getByRole("button", { name: "Knowledge" }).click();
-  await page.locator("summary").filter({ hasText: "Observe" }).click();
+  await editorTabs.getByRole("button", { name: "Entity" }).click();
+  await page.getByRole("button", { name: "Place on Map" }).click();
+  await page.locator('button.cell[title="2, 1"]').click();
+  await expect(page.getByRole("button", { name: "Place on Map" })).toBeVisible();
+
+  await editorTabs.getByRole("button", { name: "Notes" }).click();
   await page.locator('input[type="file"][accept="image/*"]').first().setInputFiles({
     name: "knowledge-dot.png",
     mimeType: "image/png",
@@ -20,9 +25,31 @@ test("Tamamo export loads and plays in Kuzunoha", async ({ page }) => {
   });
   await expect(page.locator(".knowledge-image-preview img").first()).toBeVisible();
 
-  await editorTabs.getByRole("button", { name: "Battles" }).click();
+  await editorTabs.getByRole("button", { name: "Battle" }).click();
   await page.getByRole("button", { name: "Add Battle" }).click();
-  await expect(page.getByText("New Battle")).toBeVisible();
+  await expect(page.getByLabel("Battle")).toHaveValue("battle-2");
+  await expect(page.getByLabel("Player HP")).toHaveCount(0);
+  await expect(page.getByLabel("Enemy HP")).toHaveCount(0);
+  await page.getByRole("button", { name: "Add Question" }).click();
+
+  await editorTabs.getByRole("button", { name: "Notes" }).click();
+  await page.getByLabel("Note").selectOption("attention");
+  const newBattleMembership = page.locator(".membership-row").filter({ hasText: "New Battle" });
+  await expect(newBattleMembership).toBeVisible();
+  await newBattleMembership.getByRole("button", { name: "Remove" }).click();
+  await page.getByRole("button", { name: "Add to Battle" }).click();
+  await expect(newBattleMembership).toBeVisible();
+
+  await editorTabs.getByRole("button", { name: "Battle" }).click();
+  await page.getByLabel("Battle").selectOption("battle-2");
+  await expect(page.locator(".membership-row").filter({ hasText: "Attention" })).toBeVisible();
+
+  await editorTabs.getByRole("button", { name: "Notes" }).click();
+  await page.getByLabel("Note").selectOption("attention");
+  await page.getByRole("button", { name: "Delete Note" }).click();
+  await page.getByLabel("Note").selectOption("observe");
+  await expect(page.getByRole("button", { name: "Delete Note" })).toBeDisabled();
+  await expect(page.getByText('"New Battle" must keep at least one note.')).toBeVisible();
 
   await page.getByRole("button", { name: "Spawn" }).click();
   await page.getByRole("button", { name: "Add Spawn" }).click();
@@ -36,7 +63,12 @@ test("Tamamo export loads and plays in Kuzunoha", async ({ page }) => {
   const exported = JSON.parse(await readFile(exportedPath!, "utf8"));
   expect(exported.player.name).toBe("Hero");
   expect(exported.knowledge[0].imageUrl).toContain("data:image/png;base64,");
+  expect(exported.knowledge.some((entry: { id: string }) => entry.id === "attention")).toBe(false);
   expect(exported.battles.some((battle: { name: string }) => battle.name === "New Battle")).toBe(true);
+  expect(exported.battles.every((battle: { requiredKnowledgeIds: string[] }) => !battle.requiredKnowledgeIds.includes("attention"))).toBe(true);
+  expect(JSON.stringify(exported.maps)).not.toContain('"knowledgeId":"attention"');
+  expect(exported.battles.every((battle: object) => !("playerHp" in battle) && !("enemyHp" in battle))).toBe(true);
+  expect(exported.maps[0].entities).toContainEqual(expect.objectContaining({ kind: "object", position: { x: 2, y: 1 } }));
   expect(Object.values(exported.maps[0].spawns)).toContainEqual({ x: 1, y: 1 });
 
   await page.goto("http://127.0.0.1:5174");

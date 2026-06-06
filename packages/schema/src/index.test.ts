@@ -24,6 +24,21 @@ describe("KitsuneProject schema", () => {
     }
   });
 
+  it("accepts and strips legacy battle hp fields", () => {
+    const legacy = structuredClone(sampleProject) as unknown as Record<string, unknown>;
+    const battles = legacy.battles as Array<Record<string, unknown>>;
+    battles[0].playerHp = 9;
+    battles[0].enemyHp = 12;
+
+    const result = validateProject(legacy);
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.project.battles[0]).not.toHaveProperty("playerHp");
+      expect(result.project.battles[0]).not.toHaveProperty("enemyHp");
+    }
+  });
+
   it("reports missing references", () => {
     const broken = structuredClone(sampleProject);
     broken.maps[0].entities[0].event.push({ type: "grantKnowledge", knowledgeId: "missing" });

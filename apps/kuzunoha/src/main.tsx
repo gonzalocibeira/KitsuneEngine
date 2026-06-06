@@ -83,7 +83,7 @@ function App() {
           <h1>{snapshot.overlay.battle.enemyName}</h1>
           <div className="battle-bars">
             <span>{handle.project.player.name} HP {snapshot.overlay.battle.playerHp}</span>
-            <span>Enemy HP {snapshot.overlay.battle.enemyHp}</span>
+            <span>Questions Left {snapshot.overlay.battle.questionsRemaining}</span>
           </div>
           <p>{snapshot.overlay.battle.prompt}</p>
           <form onSubmit={answerBattle}>
