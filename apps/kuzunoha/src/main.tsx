@@ -149,6 +149,7 @@ function App() {
   return (
     <main className="game-shell">
       <GameCanvas runtimeRef={runtimeRef} inputEnabledRef={inputEnabledRef} onRuntimeChange={refresh} project={handle.project} />
+      {canPause && !paused && <WorldHud snapshot={snapshot} />}
       {nearby && canPause && !paused && <section className="hud prompt">Press Space to inspect {nearby.name}</section>}
       {snapshot.overlay.type === "dialogue" && !paused && (
         <section className="modal dialogue">
@@ -235,6 +236,20 @@ function App() {
         />
       )}
     </main>
+  );
+}
+
+function WorldHud({ snapshot }: { snapshot: RuntimeSnapshot }) {
+  return (
+    <section className="world-hud" aria-label="World status">
+      <strong>{snapshot.currentMap.name}</strong>
+      <dl>
+        <dt>Diary</dt>
+        <dd>{snapshot.diaryEntries.length}</dd>
+        <dt>Inventory</dt>
+        <dd>{snapshot.inventoryKeys.length}</dd>
+      </dl>
+    </section>
   );
 }
 
