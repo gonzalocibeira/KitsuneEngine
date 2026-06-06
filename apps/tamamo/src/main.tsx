@@ -43,6 +43,8 @@ function App() {
   const [selectedSpawnId, setSelectedSpawnId] = React.useState(sampleProject.start.spawnId);
   const [rightTab, setRightTab] = React.useState<RightPanelTab>("entities");
   const [notice, setNotice] = React.useState("Sample quest loaded.");
+  const paintingRef = React.useRef(false);
+  const lastPaintedCellRef = React.useRef("");
 
   const selectedMap = project.maps.find((map) => map.id === selectedMapId) ?? project.maps[0];
   const spawnIds = Object.keys(selectedMap.spawns);
@@ -58,6 +60,22 @@ function App() {
     if (selectedSpawnId && selectedMap.spawns[selectedSpawnId]) return;
     setSelectedSpawnId(spawnIds[0] ?? "");
   }, [selectedMap.id, spawnIds.join("\0"), selectedSpawnId]);
+
+  React.useEffect(() => {
+    function stopPainting() {
+      paintingRef.current = false;
+      lastPaintedCellRef.current = "";
+    }
+
+    window.addEventListener("pointerup", stopPainting);
+    window.addEventListener("pointercancel", stopPainting);
+    window.addEventListener("blur", stopPainting);
+    return () => {
+      window.removeEventListener("pointerup", stopPainting);
+      window.removeEventListener("pointercancel", stopPainting);
+      window.removeEventListener("blur", stopPainting);
+    };
+  }, []);
 
   function updateProject(updater: (project: KitsuneProject) => KitsuneProject) {
     setProject((current) => updater(structuredClone(current)));
@@ -117,6 +135,24 @@ function App() {
     }
   }
 
+  function paintCell(x: number, y: number) {
+    if (!isInBounds({ x, y }, selectedMap.width, selectedMap.height)) return;
+    updateSelectedMap((map) => {
+      map.layers[layer].tiles[y][x] = paintedTileValue(layer, brushTileset, tileValue);
+    });
+  }
+
+  function paintEnteredCell(x: number, y: number) {
+    const coordinate = `${x},${y}`;
+    if (lastPaintedCellRef.current === coordinate) return;
+    paintCell(x, y);
+    lastPaintedCellRef.current = coordinate;
+  }
+
+  function canPaintCell(entity: Entity | undefined) {
+    return mode === "paint" && !entityPlacementArmed && !(entity && rightTab === "entities");
+  }
+
   function onCellClick(x: number, y: number) {
     if (entityPlacementArmed) {
       const id = `${entityKind}-${Date.now().toString(36)}`;
@@ -138,9 +174,7 @@ function App() {
     }
 
     if (mode === "paint") {
-      updateSelectedMap((map) => {
-        map.layers[layer].tiles[y][x] = paintedTileValue(layer, brushTileset, tileValue);
-      });
+      paintCell(x, y);
       return;
     }
 
@@ -401,9 +435,29 @@ function App() {
                     key={`${x}-${y}`}
                     className={`cell ${blocked ? "blocked" : ""} ${selected ? "selected" : ""}`}
                     style={tileCellPreviewStyle(project, selectedMap, groundTile)}
-                    onClick={() => {
+                    onPointerDown={(event) => {
+                      if (event.button !== 0 || !canPaintCell(entity)) return;
+                      event.preventDefault();
+                      paintingRef.current = true;
+                      lastPaintedCellRef.current = "";
+                      paintEnteredCell(x, y);
+                    }}
+                    onPointerEnter={(event) => {
+                      if (!paintingRef.current) return;
+                      if ((event.buttons & 1) === 0) {
+                        paintingRef.current = false;
+                        lastPaintedCellRef.current = "";
+                        return;
+                      }
+                      if (canPaintCell(entity)) paintEnteredCell(x, y);
+                    }}
+                    onClick={(event) => {
                       if (entity && rightTab === "entities" && !entityPlacementArmed) {
                         setSelectedEntityId(entity.id);
+                        return;
+                      }
+                      if (mode === "paint" && !entityPlacementArmed) {
+                        if (event.detail === 0) paintCell(x, y);
                         return;
                       }
                       onCellClick(x, y);
