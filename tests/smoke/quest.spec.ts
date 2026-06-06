@@ -17,6 +17,12 @@ async function cellCenter(page: import("@playwright/test").Page, x: number, y: n
   return { x: box!.x + box!.width / 2, y: box!.y + box!.height / 2 };
 }
 
+async function touchActions(page: import("@playwright/test").Page, actions: Array<"Up" | "Right" | "Down" | "Left" | "Act">) {
+  for (const action of actions) {
+    await page.locator(".touch-controls button").filter({ hasText: action }).evaluate((button: HTMLButtonElement) => button.click());
+  }
+}
+
 test("Tamamo paints map tiles by dragging", async ({ page }) => {
   await page.goto("http://127.0.0.1:5173");
   await page.getByRole("button", { name: "Empty" }).click();
@@ -62,6 +68,7 @@ test("Tamamo export loads and plays in Kuzunoha", async ({ page }) => {
   await expect(editorTabs.getByRole("button", { name: "Entity" })).toBeVisible();
   await expect(editorTabs.getByRole("button", { name: "Notes" })).toBeVisible();
   await expect(editorTabs.getByRole("button", { name: "Battle" })).toBeVisible();
+  await expect(editorTabs.getByRole("button", { name: "Keys" })).toBeVisible();
   await expect(editorTabs.getByRole("button", { name: "Player" })).toBeVisible();
   await expect(page.locator(".left-panel").getByRole("button", { name: "Entity" })).toHaveCount(0);
 
@@ -72,7 +79,18 @@ test("Tamamo export loads and plays in Kuzunoha", async ({ page }) => {
   await spritePicker.getByRole("button", { name: "Close sprite picker" }).click();
   await expect(spritePicker).toBeHidden();
 
+  await editorTabs.getByRole("button", { name: "Keys" }).click();
+  await page.getByRole("button", { name: "Add Key" }).click();
+  await page.getByLabel("Key ID").fill("temporary-key");
+  await page.getByLabel("Name", { exact: true }).fill("Temporary Key");
+  await page.getByRole("button", { name: "Choose Sprite" }).click();
+  const keySpritePicker = page.getByRole("dialog", { name: "Choose key sprite" });
+  await keySpritePicker.getByRole("button").nth(1).click();
+
   await editorTabs.getByRole("button", { name: "Entity" }).click();
+  await page.getByLabel("Required Key").selectOption("temporary-key");
+  await page.locator(".key-progression .add-question-row select").selectOption("temporary-key");
+  await page.getByRole("button", { name: "Add Reward" }).click();
   await page.getByRole("button", { name: "Place on Map" }).click();
   await page.locator('button.cell[title="2, 1"]').click();
   await expect(page.getByRole("button", { name: "Place on Map" })).toBeVisible();
@@ -96,6 +114,13 @@ test("Tamamo export loads and plays in Kuzunoha", async ({ page }) => {
   await expect(page.getByLabel("Player HP")).toHaveCount(0);
   await expect(page.getByLabel("Enemy HP")).toHaveCount(0);
   await page.getByRole("button", { name: "Add Question" }).click();
+  await page.getByLabel("Required Key").selectOption("temporary-key");
+  await page.locator(".key-progression .add-question-row select").selectOption("temporary-key");
+  await page.getByRole("button", { name: "Add Reward" }).click();
+
+  await editorTabs.getByRole("button", { name: "Keys" }).click();
+  await page.locator(".right-panel .content-panel").getByRole("combobox").first().selectOption("temporary-key");
+  await page.getByRole("button", { name: "Delete Key" }).click();
 
   await editorTabs.getByRole("button", { name: "Notes" }).click();
   await page.getByLabel("Note").selectOption("attention");
@@ -135,6 +160,7 @@ test("Tamamo export loads and plays in Kuzunoha", async ({ page }) => {
   expect(exported.battles.every((battle: { requiredKnowledgeIds: string[] }) => !battle.requiredKnowledgeIds.includes("attention"))).toBe(true);
   expect(JSON.stringify(exported.maps)).not.toContain('"knowledgeId":"attention"');
   expect(exported.battles.every((battle: object) => !("playerHp" in battle) && !("enemyHp" in battle))).toBe(true);
+  expect(JSON.stringify(exported)).not.toContain("temporary-key");
   expect(exported.maps[0].entities).toContainEqual(expect.objectContaining({ kind: "object", position: { x: 2, y: 1 }, collidable: false }));
   expect(Object.values(exported.maps[0].spawns)).toContainEqual({ x: 1, y: 1 });
 
@@ -158,6 +184,41 @@ test("Tamamo export loads and plays in Kuzunoha", async ({ page }) => {
   await expect(page.getByRole("dialog", { name: "Pause menu" })).toBeVisible();
   await page.locator("summary").filter({ hasText: "Diary" }).click();
   await expect(page.getByText("Observe")).toBeVisible();
+});
+
+test("Kuzunoha unlocks content with persistent inventory keys", async ({ page }) => {
+  await page.goto("http://127.0.0.1:5174");
+  await page.evaluate(() => localStorage.clear());
+  await page.getByRole("button", { name: "Play Sample Quest" }).click();
+
+  await touchActions(page, ["Up", "Up", "Right", "Right", "Right", "Right", "Right", "Up", "Right", "Right", "Right", "Right", "Act"]);
+  await expect(page.getByText("The annex door is locked. Find its key.")).toBeVisible();
+  await page.getByRole("button", { name: "Continue" }).click();
+
+  await touchActions(page, ["Up", "Up", "Left", "Left", "Left", "Left", "Left", "Left", "Left", "Act"]);
+  await expect(page.getByText("The lantern marks attention")).toBeVisible();
+  await page.getByRole("button", { name: "Continue" }).click();
+  const keyAcquired = page.getByRole("dialog", { name: "Key acquired" });
+  await expect(keyAcquired).toBeVisible();
+  await expect(keyAcquired.getByText("Annex Key")).toBeVisible();
+  await keyAcquired.getByRole("button", { name: "Continue" }).click();
+
+  await page.keyboard.press("Escape");
+  await page.locator("summary").filter({ hasText: "Inventory" }).click();
+  await expect(page.getByText("Annex Key")).toBeVisible();
+  await page.keyboard.press("Escape");
+
+  await touchActions(page, ["Right", "Right", "Right", "Right", "Right", "Right", "Right", "Right", "Down", "Act"]);
+  await expect(page.getByText("The annex door opens into a quieter study room.")).toBeVisible();
+  await page.getByRole("button", { name: "Continue" }).click();
+  await page.keyboard.press("Escape");
+  await expect(page.getByText("Study Annex")).toBeVisible();
+
+  await page.reload();
+  await page.getByRole("button", { name: /Continue The Archivist's Trial/ }).click();
+  await page.keyboard.press("Escape");
+  await page.locator("summary").filter({ hasText: "Inventory" }).click();
+  await expect(page.getByText("Annex Key")).toBeVisible();
 });
 
 test("Kuzunoha saves, continues, pauses, and preserves text input", async ({ page }) => {

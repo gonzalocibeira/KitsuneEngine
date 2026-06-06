@@ -1,4 +1,4 @@
-import type { BattleDefinition, Entity, EventCommand, KitsuneMap, KitsuneProject, KnowledgeEntry, Position, TileValue } from "@kitsune/schema";
+import type { BattleDefinition, Entity, EventCommand, KeyDefinition, KitsuneMap, KitsuneProject, KnowledgeEntry, Position, TileValue } from "@kitsune/schema";
 
 export type DialogueMessage = {
   speaker?: string;
@@ -6,7 +6,8 @@ export type DialogueMessage = {
 };
 
 export type RuntimeOverlay =
-  | { type: "dialogue"; messages: DialogueMessage[] }
+  | { type: "dialogue"; messages: DialogueMessage[]; nextOverlay?: RuntimeOverlay }
+  | { type: "keyAcquisition"; keyIds: string[]; nextOverlay: RuntimeOverlay }
   | { type: "battleConfirmation"; battleId: string; message: string }
   | { type: "battle"; battle: ActiveBattle }
   | { type: "none" };
@@ -24,23 +25,26 @@ export type ActiveBattle = {
 };
 
 export type SaveState = {
-  saveVersion: 1;
+  saveVersion: 2;
   projectId: string;
   projectVersion: string;
   mapId: string;
   player: Position;
   flags: Record<string, boolean>;
   diary: string[];
+  inventoryKeyIds: string[];
   overlay: RuntimeOverlay;
   battleQuestionQueue: string[];
   updatedAt: string;
 };
 
-export type LegacySaveState = Omit<SaveState, "saveVersion" | "overlay" | "battleQuestionQueue">;
+export type Version1SaveState = Omit<SaveState, "saveVersion" | "inventoryKeyIds"> & { saveVersion: 1 };
+export type LegacySaveState = Omit<SaveState, "saveVersion" | "overlay" | "battleQuestionQueue" | "inventoryKeyIds">;
 
 export type RuntimeSnapshot = Omit<SaveState, "battleQuestionQueue"> & {
   currentMap: KitsuneMap;
   diaryEntries: KnowledgeEntry[];
+  inventoryKeys: KeyDefinition[];
 };
 
 export class GameRuntime {
@@ -48,18 +52,19 @@ export class GameRuntime {
   private overlay: RuntimeOverlay = { type: "none" };
   private battleQuestionQueue: string[] = [];
 
-  constructor(private readonly project: KitsuneProject, save?: SaveState | LegacySaveState) {
+  constructor(private readonly project: KitsuneProject, save?: SaveState | Version1SaveState | LegacySaveState) {
     const startMap = this.requireMap(project.start.mapId);
     const start = startMap.spawns[project.start.spawnId] ?? { x: 1, y: 1 };
     const restored = save ? restoreSave(save) : undefined;
     this.state = restored ?? {
-      saveVersion: 1,
+      saveVersion: 2,
       projectId: project.id,
       projectVersion: project.version,
       mapId: startMap.id,
       player: { ...start },
       flags: {},
       diary: [],
+      inventoryKeyIds: [],
       overlay: { type: "none" },
       battleQuestionQueue: [],
       updatedAt: new Date().toISOString()
@@ -74,7 +79,8 @@ export class GameRuntime {
       ...structuredClone(state),
       overlay: structuredClone(this.overlay),
       currentMap: this.currentMap(),
-      diaryEntries: this.state.diary.map((id) => this.requireKnowledge(id))
+      diaryEntries: this.state.diary.map((id) => this.requireKnowledge(id)),
+      inventoryKeys: (this.project.keys ?? []).filter((key) => this.state.inventoryKeyIds.includes(key.id))
     };
   }
 
@@ -110,7 +116,7 @@ export class GameRuntime {
     for (const position of adjacent) {
       const entity = this.entityAt(position);
       if (entity) {
-        this.runEvent(entity.event);
+        this.runEntityInteraction(entity);
         return entity;
       }
     }
@@ -121,13 +127,23 @@ export class GameRuntime {
   interactAt(position: Position): Entity | undefined {
     const entity = this.entityAt(position);
     if (entity) {
-      this.runEvent(entity.event);
+      this.runEntityInteraction(entity);
     }
     return entity;
   }
 
   closeOverlay() {
-    if (this.overlay.type === "dialogue" || this.overlay.type === "battleConfirmation") {
+    if (this.overlay.type === "keyAcquisition") {
+      this.overlay = this.overlay.nextOverlay;
+      this.touch();
+      return;
+    }
+    if (this.overlay.type === "dialogue") {
+      this.overlay = this.overlay.nextOverlay ?? { type: "none" };
+      this.touch();
+      return;
+    }
+    if (this.overlay.type === "battleConfirmation") {
       this.overlay = { type: "none" };
       this.touch();
     }
@@ -161,8 +177,10 @@ export class GameRuntime {
 
     if (nextBattle.questionsRemaining <= 0) {
       this.state.flags[definition.victoryFlag] = true;
+      const acquiredKeyIds = this.grantKeys(definition.rewardKeyIds ?? []);
       nextBattle.result = "victory";
       this.overlay = { type: "dialogue", messages: [{ text: `Victory over ${definition.enemyName}.` }] };
+      this.showKeyAcquisition(acquiredKeyIds);
       this.touch();
       return nextBattle;
     }
@@ -189,7 +207,7 @@ export class GameRuntime {
     });
   }
 
-  private runEvent(commands: EventCommand[]) {
+  private runEvent(commands: EventCommand[]): boolean {
     const messages: DialogueMessage[] = [];
 
     for (const command of commands) {
@@ -211,20 +229,37 @@ export class GameRuntime {
 
       if (command.type === "startBattle") {
         const battle = this.requireBattle(command.battleId);
+        if (!this.hasRequiredKey(battle.lock?.keyId)) {
+          this.overlay = { type: "dialogue", messages: [{ text: battle.lock!.missingKeyMessage }] };
+          this.touch();
+          return false;
+        }
         this.overlay = { type: "battleConfirmation", battleId: battle.id, message: battle.confirmationMessage };
         this.touch();
-        return;
+        return true;
       }
 
       if (command.type === "branch") {
         const branchCommands = this.state.flags[command.flag] === command.expected ? command.then : command.else ?? [];
-        this.runEvent(branchCommands);
-        return;
+        return this.runEvent(branchCommands);
       }
     }
 
     this.overlay = messages.length > 0 ? { type: "dialogue", messages } : { type: "none" };
     this.touch();
+    return true;
+  }
+
+  private runEntityInteraction(entity: Entity) {
+    if (!this.hasRequiredKey(entity.lock?.keyId)) {
+      this.overlay = { type: "dialogue", messages: [{ text: entity.lock!.missingKeyMessage }] };
+      this.touch();
+      return;
+    }
+    if (this.runEvent(entity.event)) {
+      this.showKeyAcquisition(this.grantKeys(entity.rewardKeyIds ?? []));
+      this.touch();
+    }
   }
 
   private startBattle(battleId: string): ActiveBattle {
@@ -261,6 +296,31 @@ export class GameRuntime {
     }
   }
 
+  private grantKeys(keyIds: string[]): string[] {
+    const acquiredKeyIds: string[] = [];
+    for (const keyId of keyIds) {
+      this.requireKey(keyId);
+      if (!this.state.inventoryKeyIds.includes(keyId)) {
+        this.state.inventoryKeyIds.push(keyId);
+        acquiredKeyIds.push(keyId);
+      }
+    }
+    return acquiredKeyIds;
+  }
+
+  private showKeyAcquisition(keyIds: string[]) {
+    if (keyIds.length === 0) return;
+    if (this.overlay.type === "dialogue") {
+      this.overlay.nextOverlay = { type: "keyAcquisition", keyIds, nextOverlay: { type: "none" } };
+      return;
+    }
+    this.overlay = { type: "keyAcquisition", keyIds, nextOverlay: this.overlay };
+  }
+
+  private hasRequiredKey(keyId: string | undefined): boolean {
+    return !keyId || this.state.inventoryKeyIds.includes(keyId);
+  }
+
   private transfer(mapId: string, spawnId: string) {
     const map = this.requireMap(mapId);
     const spawn = map.spawns[spawnId];
@@ -291,6 +351,12 @@ export class GameRuntime {
     const battle = this.project.battles.find((candidate) => candidate.id === battleId);
     if (!battle) throw new Error(`Missing battle "${battleId}"`);
     return battle;
+  }
+
+  private requireKey(keyId: string): KeyDefinition {
+    const key = (this.project.keys ?? []).find((candidate) => candidate.id === keyId);
+    if (!key) throw new Error(`Missing key "${keyId}"`);
+    return key;
   }
 
   private touch() {
@@ -333,14 +399,22 @@ function shuffle<T>(values: T[]): T[] {
   return shuffled;
 }
 
-function restoreSave(save: SaveState | LegacySaveState): SaveState {
-  if ("saveVersion" in save && save.saveVersion === 1) {
+function restoreSave(save: SaveState | Version1SaveState | LegacySaveState): SaveState {
+  if ("saveVersion" in save && save.saveVersion === 2) {
     return structuredClone(save);
+  }
+  if ("saveVersion" in save && save.saveVersion === 1) {
+    return {
+      ...structuredClone(save),
+      saveVersion: 2,
+      inventoryKeyIds: []
+    };
   }
   return {
     ...structuredClone(save),
-    saveVersion: 1,
+    saveVersion: 2,
     overlay: { type: "none" },
-    battleQuestionQueue: []
+    battleQuestionQueue: [],
+    inventoryKeyIds: []
   };
 }

@@ -15,13 +15,25 @@ describe("GameRuntime", () => {
     expect(runtime.snapshot().diary).toContain("attention");
   });
 
-  it("transfers maps through door events", () => {
+  it("blocks locked entities until their key is acquired", () => {
     const runtime = new GameRuntime(sampleProject);
 
+    runtime.interactAt({ x: 12, y: 4 });
+    expect(runtime.snapshot().mapId).toBe("library-yard");
+    expect(runtime.snapshot().overlay).toEqual({
+      type: "dialogue",
+      messages: [{ text: "The annex door is locked. Find its key." }]
+    });
+
+    runtime.closeOverlay();
+    runtime.interactAt({ x: 3, y: 2 });
+    runtime.closeOverlay();
     runtime.interactAt({ x: 12, y: 4 });
 
     expect(runtime.snapshot().mapId).toBe("study-annex");
     expect(runtime.snapshot().player).toEqual({ x: 2, y: 4 });
+    expect(runtime.snapshot().inventoryKeyIds).toEqual(["annex-key"]);
+    expect(runtime.snapshot().inventoryKeys.map((key) => key.id)).toEqual(["annex-key"]);
   });
 
   it("keeps collision-layer tiles blocking movement", () => {
@@ -206,6 +218,97 @@ describe("GameRuntime", () => {
 
     expect(restored.snapshot().player).toEqual(runtime.snapshot().player);
     expect(restored.snapshot().overlay).toEqual({ type: "none" });
+    expect(restored.snapshot().inventoryKeyIds).toEqual([]);
+  });
+
+  it("grants multiple entity keys idempotently", () => {
+    const project = structuredClone(sampleProject);
+    project.keys.push({ id: "second-key", name: "Second Key" });
+    const lantern = project.maps[0].entities.find((entity) => entity.id === "lantern");
+    if (!lantern) throw new Error("Missing lantern");
+    lantern.rewardKeyIds = ["annex-key", "second-key"];
+    const runtime = new GameRuntime(project);
+
+    runtime.interactAt(lantern.position);
+
+    expect(runtime.snapshot().inventoryKeyIds).toEqual(["annex-key", "second-key"]);
+    expect(runtime.snapshot().overlay).toEqual({
+      type: "dialogue",
+      messages: [{ speaker: undefined, text: "The lantern marks attention: notice first, name second." }],
+      nextOverlay: {
+        type: "keyAcquisition",
+        keyIds: ["annex-key", "second-key"],
+        nextOverlay: { type: "none" }
+      }
+    });
+
+    runtime.closeOverlay();
+    expect(runtime.snapshot().overlay).toEqual({
+      type: "keyAcquisition",
+      keyIds: ["annex-key", "second-key"],
+      nextOverlay: { type: "none" }
+    });
+    runtime.closeOverlay();
+    runtime.interactAt(lantern.position);
+    expect(runtime.snapshot().overlay).toEqual({
+      type: "dialogue",
+      messages: [{ speaker: undefined, text: "The lantern marks attention: notice first, name second." }]
+    });
+  });
+
+  it("does not grant entity rewards when a locked battle command is blocked", () => {
+    const project = structuredClone(sampleProject);
+    const battleEntity = project.maps.flatMap((map) => map.entities).find((entity) => entity.id === "trial-stone");
+    if (!battleEntity) throw new Error("Missing battle entity");
+    battleEntity.rewardKeyIds = ["annex-key"];
+    project.battles[0].lock = { keyId: "annex-key", missingKeyMessage: "Battle locked." };
+    const runtime = new GameRuntime(project);
+
+    runtime.interactAt(battleEntity.position);
+
+    expect(runtime.snapshot().overlay).toEqual({ type: "dialogue", messages: [{ text: "Battle locked." }] });
+    expect(runtime.snapshot().inventoryKeyIds).toEqual([]);
+  });
+
+  it("grants battle rewards only on victory", () => {
+    const project = structuredClone(sampleProject);
+    project.player.maxHp = 1;
+    project.battles[0].requiredKnowledgeIds = ["observe"];
+    project.battles[0].rewardKeyIds = ["annex-key"];
+    const defeated = new GameRuntime(project);
+    startSampleBattle(defeated);
+    defeated.answerBattle("wrong");
+    expect(defeated.snapshot().inventoryKeyIds).toEqual([]);
+
+    const victorious = new GameRuntime(project);
+    startSampleBattle(victorious);
+    const snapshot = victorious.snapshot();
+    if (snapshot.overlay.type !== "battle") throw new Error("Battle did not start");
+    victorious.answerBattle(snapshot.overlay.battle.answer);
+    expect(victorious.snapshot().inventoryKeyIds).toEqual(["annex-key"]);
+    expect(victorious.snapshot().overlay).toEqual({
+      type: "dialogue",
+      messages: [{ text: "Victory over Restless Page." }],
+      nextOverlay: {
+        type: "keyAcquisition",
+        keyIds: ["annex-key"],
+        nextOverlay: { type: "none" }
+      }
+    });
+  });
+
+  it("restores inventory and migrates version 1 saves with an empty inventory", () => {
+    const runtime = new GameRuntime(sampleProject);
+    runtime.interactAt({ x: 3, y: 2 });
+    const saved = runtime.saveState();
+    const restored = new GameRuntime(sampleProject, saved);
+    expect(restored.snapshot().inventoryKeyIds).toEqual(["annex-key"]);
+
+    const { inventoryKeyIds: _inventoryKeyIds, saveVersion: _saveVersion, ...version1Fields } = saved;
+    const version1 = { ...version1Fields, saveVersion: 1 as const };
+    const migrated = new GameRuntime(sampleProject, version1);
+    expect(migrated.saveState().saveVersion).toBe(2);
+    expect(migrated.snapshot().inventoryKeyIds).toEqual([]);
   });
 });
 

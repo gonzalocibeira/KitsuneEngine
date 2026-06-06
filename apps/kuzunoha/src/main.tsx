@@ -3,7 +3,7 @@ import { createRoot } from "react-dom/client";
 import Phaser from "phaser";
 import { sampleProject } from "@kitsune/schema/sampleProject";
 import { validateProject, type Entity, type KitsuneMap, type KitsuneProject, type SpriteAsset, type TilesetAsset, type TileValue } from "@kitsune/schema";
-import { createSaveKey, GameRuntime, type LegacySaveState, type RuntimeSnapshot, type SaveState } from "@kitsune/runtime-core";
+import { createSaveKey, GameRuntime, type LegacySaveState, type RuntimeSnapshot, type SaveState, type Version1SaveState } from "@kitsune/runtime-core";
 import "./styles.css";
 
 type RuntimeHandle = {
@@ -68,7 +68,7 @@ function App() {
 
       if (paused || (event.code !== "Space" && event.key !== "Enter")) return;
 
-      if (current.overlay.type === "dialogue") {
+      if (current.overlay.type === "dialogue" || current.overlay.type === "keyAcquisition") {
         event.preventDefault();
         active.runtime.closeOverlay();
         refresh();
@@ -85,7 +85,7 @@ function App() {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [paused, refresh]);
 
-  function loadProject(project: KitsuneProject, save?: SaveState | LegacySaveState) {
+  function loadProject(project: KitsuneProject, save?: SaveState | Version1SaveState | LegacySaveState) {
     const runtime = new GameRuntime(project, save);
     setHandle({ runtime, project });
     setSnapshot(runtime.snapshot());
@@ -161,6 +161,24 @@ function App() {
           <button autoFocus onClick={closeOverlay}>Continue</button>
         </section>
       )}
+      {snapshot.overlay.type === "keyAcquisition" && !paused && (
+        <section className="key-acquisition" role="dialog" aria-label="Key acquired">
+          <p className="eyebrow">Key Acquired</p>
+          <div className="key-acquisition-list">
+            {snapshot.overlay.keyIds.map((keyId) => {
+              const key = handle.project.keys.find((candidate) => candidate.id === keyId);
+              const sprite = key?.spriteKey ? handle.project.assets.sprites[key.spriteKey] : undefined;
+              return (
+                <article key={keyId}>
+                  <span className="key-acquisition-icon" style={runtimeSpritePreviewStyle(sprite)} />
+                  <h1>{key?.name ?? keyId}</h1>
+                </article>
+              );
+            })}
+          </div>
+          <button autoFocus className="primary" onClick={closeOverlay}>Continue</button>
+        </section>
+      )}
       {snapshot.overlay.type === "battleConfirmation" && !paused && (
         <section className="modal dialogue" role="dialog" aria-label="Confirm battle">
           <p>{snapshot.overlay.message}</p>
@@ -229,7 +247,7 @@ function BootScreen({
   error: string;
   latestSave?: StoredGame;
   setError: (error: string) => void;
-  loadProject: (project: KitsuneProject, save?: SaveState | LegacySaveState) => void;
+  loadProject: (project: KitsuneProject, save?: SaveState | Version1SaveState | LegacySaveState) => void;
 }) {
   return (
     <main className="boot">
@@ -519,6 +537,10 @@ function PauseMenu({
           <Diary snapshot={snapshot} />
         </details>
         <details>
+          <summary>Inventory ({snapshot.inventoryKeys.length})</summary>
+          <Inventory project={project} snapshot={snapshot} />
+        </details>
+        <details>
           <summary>Controls</summary>
           <dl className="controls-list">
             <dt>Move</dt><dd>Arrow keys or WASD</dd>
@@ -537,6 +559,23 @@ function PauseMenu({
         )}
       </div>
     </section>
+  );
+}
+
+function Inventory({ project, snapshot }: { project: KitsuneProject; snapshot: RuntimeSnapshot }) {
+  return (
+    <div className="inventory">
+      {snapshot.inventoryKeys.length === 0 ? (
+        <p>No keys collected yet.</p>
+      ) : (
+        snapshot.inventoryKeys.map((key) => (
+          <article key={key.id}>
+            <span className="inventory-icon" style={runtimeSpritePreviewStyle(key.spriteKey ? project.assets.sprites[key.spriteKey] : undefined)} />
+            <strong>{key.name}</strong>
+          </article>
+        ))
+      )}
+    </div>
   );
 }
 
@@ -604,7 +643,7 @@ function loadLatestSave(): StoredGame | undefined {
   }
 }
 
-function isSaveForProject(save: SaveState | LegacySaveState, project: KitsuneProject): boolean {
+function isSaveForProject(save: SaveState | Version1SaveState | LegacySaveState, project: KitsuneProject): boolean {
   if (
     save.projectId !== project.id ||
     save.projectVersion !== project.version ||
@@ -621,15 +660,26 @@ function isSaveForProject(save: SaveState | LegacySaveState, project: KitsunePro
   }
 
   if (!("saveVersion" in save)) return true;
-  if (save.saveVersion !== 1 || !Array.isArray(save.battleQuestionQueue) || !isRuntimeOverlay(save.overlay)) return false;
-  return save.battleQuestionQueue.every((id) => project.knowledge.some((entry) => entry.id === id));
+  if (!Array.isArray(save.battleQuestionQueue) || !isRuntimeOverlay(save.overlay)) return false;
+  if (!save.battleQuestionQueue.every((id) => project.knowledge.some((entry) => entry.id === id))) return false;
+  if (save.saveVersion === 1) return true;
+  return save.saveVersion === 2 &&
+    Array.isArray(save.inventoryKeyIds) &&
+    save.inventoryKeyIds.every((id) => project.keys.some((key) => key.id === id));
 }
 
 function isRuntimeOverlay(overlay: SaveState["overlay"]): boolean {
   if (!overlay || typeof overlay !== "object") return false;
   if (overlay.type === "none") return true;
   if (overlay.type === "dialogue") {
-    return Array.isArray(overlay.messages) && overlay.messages.every((message) => typeof message?.text === "string");
+    return Array.isArray(overlay.messages) &&
+      overlay.messages.every((message) => typeof message?.text === "string") &&
+      (!overlay.nextOverlay || isRuntimeOverlay(overlay.nextOverlay));
+  }
+  if (overlay.type === "keyAcquisition") {
+    return Array.isArray(overlay.keyIds) &&
+      overlay.keyIds.every((id) => typeof id === "string") &&
+      isRuntimeOverlay(overlay.nextOverlay);
   }
   if (overlay.type === "battleConfirmation") {
     return typeof overlay.battleId === "string" && typeof overlay.message === "string";
@@ -708,6 +758,17 @@ function tilesetTextureKey(key: string): string {
 
 function spriteTextureKey(key: string): string {
   return `sprite:${key}`;
+}
+
+function runtimeSpritePreviewStyle(sprite: SpriteAsset | undefined): React.CSSProperties | undefined {
+  if (!sprite?.image || sprite.frame === undefined || !sprite.columns || !sprite.rows) return undefined;
+  const column = sprite.frame % sprite.columns;
+  const row = Math.floor(sprite.frame / sprite.columns);
+  return {
+    backgroundImage: `url("${sprite.image}")`,
+    backgroundSize: `${sprite.columns * 100}% ${sprite.rows * 100}%`,
+    backgroundPosition: `${sprite.columns > 1 ? column / (sprite.columns - 1) * 100 : 0}% ${sprite.rows > 1 ? row / (sprite.rows - 1) * 100 : 0}%`
+  };
 }
 
 createRoot(document.getElementById("root")!).render(<App />);
