@@ -21,10 +21,20 @@ test("Tamamo export loads and plays in Kuzunoha", async ({ page }) => {
   await expect(editorTabs.getByRole("button", { name: "Player" })).toBeVisible();
   await expect(page.locator(".left-panel").getByRole("button", { name: "Entity" })).toHaveCount(0);
 
+  await editorTabs.getByRole("button", { name: "Player" }).click();
+  await page.getByRole("button", { name: "Choose Sprite" }).click();
+  const spritePicker = page.getByRole("dialog", { name: "Choose player sprite" });
+  await expect(spritePicker).toBeVisible();
+  await spritePicker.getByRole("button", { name: "Close sprite picker" }).click();
+  await expect(spritePicker).toBeHidden();
+
   await editorTabs.getByRole("button", { name: "Entity" }).click();
   await page.getByRole("button", { name: "Place on Map" }).click();
   await page.locator('button.cell[title="2, 1"]').click();
   await expect(page.getByRole("button", { name: "Place on Map" })).toBeVisible();
+  const collisionToggle = page.getByRole("checkbox", { name: "Blocks player movement" });
+  await expect(collisionToggle).toBeChecked();
+  await collisionToggle.uncheck();
 
   await editorTabs.getByRole("button", { name: "Notes" }).click();
   await page.locator('input[type="file"][accept="image/*"]').first().setInputFiles({
@@ -36,7 +46,9 @@ test("Tamamo export loads and plays in Kuzunoha", async ({ page }) => {
 
   await editorTabs.getByRole("button", { name: "Battle" }).click();
   await page.getByRole("button", { name: "Add Battle" }).click();
-  await expect(page.getByLabel("Battle")).toHaveValue("battle-2");
+  const battleSelect = page.locator(".content-panel").getByRole("combobox").first();
+  await expect(battleSelect).toHaveValue("battle-2");
+  await page.getByLabel("Confirmation Message").fill("Begin the new battle?");
   await expect(page.getByLabel("Player HP")).toHaveCount(0);
   await expect(page.getByLabel("Enemy HP")).toHaveCount(0);
   await page.getByRole("button", { name: "Add Question" }).click();
@@ -50,7 +62,7 @@ test("Tamamo export loads and plays in Kuzunoha", async ({ page }) => {
   await expect(newBattleMembership).toBeVisible();
 
   await editorTabs.getByRole("button", { name: "Battle" }).click();
-  await page.getByLabel("Battle").selectOption("battle-2");
+  await battleSelect.selectOption("battle-2");
   await expect(page.locator(".membership-row").filter({ hasText: "Attention" })).toBeVisible();
 
   await editorTabs.getByRole("button", { name: "Notes" }).click();
@@ -70,14 +82,16 @@ test("Tamamo export loads and plays in Kuzunoha", async ({ page }) => {
   const exportedPath = await download.path();
   expect(exportedPath).toBeTruthy();
   const exported = JSON.parse(await readFile(exportedPath!, "utf8"));
-  expect(exported.player.name).toBe("Hero");
+  const bundledSample = JSON.parse(await readFile(new URL("../../packages/schema/src/sample-learning-quest.kitsune.json", import.meta.url), "utf8"));
+  expect(exported.player.name).toBe(bundledSample.player.name);
   expect(exported.knowledge[0].imageUrl).toContain("data:image/png;base64,");
   expect(exported.knowledge.some((entry: { id: string }) => entry.id === "attention")).toBe(false);
   expect(exported.battles.some((battle: { name: string }) => battle.name === "New Battle")).toBe(true);
+  expect(exported.battles.some((battle: { confirmationMessage: string }) => battle.confirmationMessage === "Begin the new battle?")).toBe(true);
   expect(exported.battles.every((battle: { requiredKnowledgeIds: string[] }) => !battle.requiredKnowledgeIds.includes("attention"))).toBe(true);
   expect(JSON.stringify(exported.maps)).not.toContain('"knowledgeId":"attention"');
   expect(exported.battles.every((battle: object) => !("playerHp" in battle) && !("enemyHp" in battle))).toBe(true);
-  expect(exported.maps[0].entities).toContainEqual(expect.objectContaining({ kind: "object", position: { x: 2, y: 1 } }));
+  expect(exported.maps[0].entities).toContainEqual(expect.objectContaining({ kind: "object", position: { x: 2, y: 1 }, collidable: false }));
   expect(Object.values(exported.maps[0].spawns)).toContainEqual({ x: 1, y: 1 });
 
   await page.goto("http://127.0.0.1:5174");
@@ -109,6 +123,10 @@ test("Kuzunoha saves, continues, pauses, and preserves text input", async ({ pag
   await expect(page.locator("canvas")).toBeVisible();
 
   await move(page, "ArrowRight", 8);
+  await expect(page.getByRole("dialog", { name: "Confirm battle" })).toHaveCount(0);
+  await page.keyboard.press("Space");
+  await expect(page.getByRole("dialog", { name: "Confirm battle" })).toContainText("Challenge the Restless Page?");
+  await page.getByRole("button", { name: "Start Battle" }).click();
   const answer = page.getByPlaceholder("Type the answer");
   await expect(answer).toBeFocused();
   await page.keyboard.type("wasd");

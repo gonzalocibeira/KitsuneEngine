@@ -7,6 +7,7 @@ export type DialogueMessage = {
 
 export type RuntimeOverlay =
   | { type: "dialogue"; messages: DialogueMessage[] }
+  | { type: "battleConfirmation"; battleId: string; message: string }
   | { type: "battle"; battle: ActiveBattle }
   | { type: "none" };
 
@@ -126,10 +127,15 @@ export class GameRuntime {
   }
 
   closeOverlay() {
-    if (this.overlay.type === "dialogue") {
+    if (this.overlay.type === "dialogue" || this.overlay.type === "battleConfirmation") {
       this.overlay = { type: "none" };
       this.touch();
     }
+  }
+
+  confirmBattle(): ActiveBattle | undefined {
+    if (this.overlay.type !== "battleConfirmation") return undefined;
+    return this.startBattle(this.overlay.battleId);
   }
 
   answerBattle(rawAnswer: string): ActiveBattle | undefined {
@@ -204,10 +210,9 @@ export class GameRuntime {
       }
 
       if (command.type === "startBattle") {
-        if (messages.length > 0) {
-          this.overlay = { type: "dialogue", messages };
-        }
-        this.startBattle(command.battleId);
+        const battle = this.requireBattle(command.battleId);
+        this.overlay = { type: "battleConfirmation", battleId: battle.id, message: battle.confirmationMessage };
+        this.touch();
         return;
       }
 
@@ -222,7 +227,7 @@ export class GameRuntime {
     this.touch();
   }
 
-  private startBattle(battleId: string) {
+  private startBattle(battleId: string): ActiveBattle {
     const battle = this.requireBattle(battleId);
     this.battleQuestionQueue = shuffle(battle.requiredKnowledgeIds);
     const firstQuestion = this.nextBattleQuestion();
@@ -240,6 +245,7 @@ export class GameRuntime {
       }
     };
     this.touch();
+    return this.overlay.battle;
   }
 
   private nextBattleQuestion(): KnowledgeEntry {
@@ -302,7 +308,12 @@ export function isWalkable(map: KitsuneMap, position: Position): boolean {
   if (position.x < 0 || position.y < 0 || position.x >= map.width || position.y >= map.height) {
     return false;
   }
-  return tileNumber(map.layers.collision.tiles[position.y]?.[position.x] ?? 0) === 0;
+  if (tileNumber(map.layers.collision.tiles[position.y]?.[position.x] ?? 0) > 0) {
+    return false;
+  }
+  return !map.entities.some(
+    (entity) => entity.collidable !== false && entity.position.x === position.x && entity.position.y === position.y
+  );
 }
 
 export function normalizeAnswer(answer: string): string {

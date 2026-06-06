@@ -8,7 +8,7 @@ describe("KitsuneProject schema", () => {
 
     expect(result.ok).toBe(true);
     if (result.ok) {
-      expect(result.project.player).toEqual({ name: "Hero", spriteKey: "hero", maxHp: 3 });
+      expect(result.project.player).toEqual(sampleProject.player);
     }
   });
 
@@ -21,6 +21,32 @@ describe("KitsuneProject schema", () => {
     expect(result.ok).toBe(true);
     if (result.ok) {
       expect(result.project.player).toEqual({ name: "Hero", maxHp: 3 });
+    }
+  });
+
+  it("defaults entities to collidable and preserves disabled collision", () => {
+    const legacy = structuredClone(sampleProject);
+    delete (legacy.maps[0].entities[0] as Partial<(typeof legacy.maps)[number]["entities"][number]>).collidable;
+    legacy.maps[0].entities[1].collidable = false;
+
+    const result = validateProject(legacy);
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.project.maps[0].entities[0].collidable).toBe(true);
+      expect(result.project.maps[0].entities[1].collidable).toBe(false);
+    }
+  });
+
+  it("defaults battle confirmation messages for older projects", () => {
+    const legacy = structuredClone(sampleProject);
+    delete (legacy.battles[0] as Partial<(typeof legacy.battles)[number]>).confirmationMessage;
+
+    const result = validateProject(legacy);
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.project.battles[0].confirmationMessage).toBe("Start this battle?");
     }
   });
 

@@ -24,12 +24,78 @@ describe("GameRuntime", () => {
     expect(runtime.snapshot().player).toEqual({ x: 2, y: 4 });
   });
 
+  it("keeps collision-layer tiles blocking movement", () => {
+    const project = structuredClone(sampleProject);
+    project.maps[0].layers.collision.tiles[7][3] = 1;
+    const runtime = new GameRuntime(project);
+
+    expect(runtime.move(1, 0)).toBe(false);
+    expect(runtime.snapshot().player).toEqual({ x: 2, y: 7 });
+  });
+
+  it("blocks movement into entities by default", () => {
+    const runtime = new GameRuntime(sampleProject);
+
+    expect(runtime.move(1, 0)).toBe(true);
+    expect(runtime.move(0, -1)).toBe(true);
+    expect(runtime.move(0, -1)).toBe(true);
+    expect(runtime.move(0, -1)).toBe(true);
+    expect(runtime.move(0, -1)).toBe(true);
+    expect(runtime.move(0, -1)).toBe(false);
+    expect(runtime.snapshot().player).toEqual({ x: 3, y: 3 });
+  });
+
+  it("allows movement through entities with collision disabled", () => {
+    const project = structuredClone(sampleProject);
+    const entity = project.maps[0].entities.find((candidate) => candidate.id === "lantern");
+    if (!entity) throw new Error("Missing lantern");
+    entity.collidable = false;
+    const runtime = new GameRuntime(project);
+
+    expect(runtime.move(1, 0)).toBe(true);
+    expect(runtime.move(0, -1)).toBe(true);
+    expect(runtime.move(0, -1)).toBe(true);
+    expect(runtime.move(0, -1)).toBe(true);
+    expect(runtime.move(0, -1)).toBe(true);
+    expect(runtime.move(0, -1)).toBe(true);
+    expect(runtime.snapshot().player).toEqual({ x: 3, y: 2 });
+  });
+
+  it("blocks movement into battle entities and asks for confirmation", () => {
+    const runtime = new GameRuntime(sampleProject);
+
+    for (let index = 0; index < 7; index += 1) {
+      expect(runtime.move(1, 0)).toBe(true);
+    }
+    expect(runtime.move(1, 0)).toBe(false);
+
+    runtime.interact();
+
+    expect(runtime.snapshot().overlay).toEqual({
+      type: "battleConfirmation",
+      battleId: "memory-trial",
+      message: "Challenge the Restless Page?"
+    });
+  });
+
+  it("can cancel or confirm a battle before it starts", () => {
+    const runtime = new GameRuntime(sampleProject);
+
+    runtime.interactAt({ x: 10, y: 7 });
+    runtime.closeOverlay();
+    expect(runtime.snapshot().overlay).toEqual({ type: "none" });
+
+    runtime.interactAt({ x: 10, y: 7 });
+    runtime.confirmBattle();
+    expect(runtime.snapshot().overlay.type).toBe("battle");
+  });
+
   it("starts with full player life and consumes every shuffled question", () => {
     const project = structuredClone(sampleProject);
     project.player.maxHp = 5;
     vi.spyOn(Math, "random").mockReturnValue(0);
     const runtime = new GameRuntime(project);
-    runtime.interactAt({ x: 10, y: 7 });
+    startSampleBattle(runtime);
 
     const askedKnowledgeIds = new Set<string>();
     let expectedRemaining = project.battles[0].requiredKnowledgeIds.length;
@@ -58,7 +124,7 @@ describe("GameRuntime", () => {
     project.player.maxHp = 3;
     project.battles[0].requiredKnowledgeIds = ["observe", "attention"];
     const runtime = new GameRuntime(project);
-    runtime.interactAt({ x: 10, y: 7 });
+    startSampleBattle(runtime);
 
     runtime.answerBattle("wrong");
     runtime.answerBattle("wrong");
@@ -71,7 +137,7 @@ describe("GameRuntime", () => {
     project.player.maxHp = 2;
     project.battles[0].requiredKnowledgeIds = ["observe", "attention"];
     const runtime = new GameRuntime(project);
-    runtime.interactAt({ x: 10, y: 7 });
+    startSampleBattle(runtime);
 
     runtime.answerBattle("wrong");
     let snapshot = runtime.snapshot();
@@ -92,10 +158,10 @@ describe("GameRuntime", () => {
     project.player.maxHp = 1;
     const runtime = new GameRuntime(project);
 
-    runtime.interactAt({ x: 10, y: 7 });
+    startSampleBattle(runtime);
     runtime.answerBattle("wrong");
     runtime.closeOverlay();
-    runtime.interactAt({ x: 10, y: 7 });
+    startSampleBattle(runtime);
 
     const snapshot = runtime.snapshot();
     expect(snapshot.overlay.type).toBe("battle");
@@ -118,7 +184,7 @@ describe("GameRuntime", () => {
   it("restores an active battle and its remaining shuffled questions", () => {
     vi.spyOn(Math, "random").mockReturnValue(0);
     const runtime = new GameRuntime(sampleProject);
-    runtime.interactAt({ x: 10, y: 7 });
+    startSampleBattle(runtime);
     const first = runtime.snapshot();
     expect(first.overlay.type).toBe("battle");
     if (first.overlay.type !== "battle") return;
@@ -142,3 +208,8 @@ describe("GameRuntime", () => {
     expect(restored.snapshot().overlay).toEqual({ type: "none" });
   });
 });
+
+function startSampleBattle(runtime: GameRuntime) {
+  runtime.interactAt({ x: 10, y: 7 });
+  runtime.confirmBattle();
+}

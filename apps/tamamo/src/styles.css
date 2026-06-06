@@ -72,6 +72,16 @@ label {
   font-size: 0.85rem;
 }
 
+.sprite-field-control {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.field-label {
+  color: #c9d4cf;
+  font-size: 0.85rem;
+}
+
 .app-shell {
   min-height: 100vh;
 }
