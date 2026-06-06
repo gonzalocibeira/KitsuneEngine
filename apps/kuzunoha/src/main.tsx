@@ -82,7 +82,7 @@ function App() {
           <p className="eyebrow">Battle</p>
           <h1>{snapshot.overlay.battle.enemyName}</h1>
           <div className="battle-bars">
-            <span>Hero HP {snapshot.overlay.battle.playerHp}</span>
+            <span>{handle.project.player.name} HP {snapshot.overlay.battle.playerHp}</span>
             <span>Enemy HP {snapshot.overlay.battle.enemyHp}</span>
           </div>
           <p>{snapshot.overlay.battle.prompt}</p>
@@ -333,7 +333,7 @@ class WorldScene extends Phaser.Scene {
   }
 
   private renderPlayer(tileSize: number): Phaser.GameObjects.Rectangle | Phaser.GameObjects.Sprite {
-    const hero = this.project.assets.sprites.hero;
+    const hero = this.project.player.spriteKey ? this.project.assets.sprites[this.project.player.spriteKey] : undefined;
     if (isRenderableSprite(hero)) {
       const view = this.add.sprite(0, 0, spriteTextureKey(hero.key), hero.frame);
       view.setScale(tileSize / Math.max(hero.frameWidth, hero.frameHeight));
@@ -361,6 +361,7 @@ function Diary({ snapshot }: { snapshot: RuntimeSnapshot }) {
         snapshot.diaryEntries.map((entry) => (
           <article key={entry.id}>
             <strong>{entry.title}</strong>
+            {entry.imageUrl && <img className="knowledge-image" src={entry.imageUrl} alt={entry.imageAlt || entry.title} />}
             <p>{entry.summary}</p>
           </article>
         ))

@@ -96,6 +96,8 @@ export const knowledgeSchema = z.object({
   prompt: z.string().min(1),
   answer: z.string().min(1),
   body: z.string().min(1),
+  imageUrl: z.string().min(1).optional(),
+  imageAlt: z.string().optional(),
   tags: z.array(z.string().min(1)).default([])
 });
 
@@ -134,12 +136,19 @@ export const assetManifestSchema = z.object({
   sprites: z.record(spriteAssetSchema)
 });
 
+export const playerSchema = z.object({
+  name: z.string().min(1).default("Hero"),
+  spriteKey: z.string().min(1).optional(),
+  maxHp: z.number().int().positive().default(3)
+});
+
 export const kitsuneProjectSchema = z.object({
   schemaVersion: z.literal(SCHEMA_VERSION),
   id: z.string().min(1),
   title: z.string().min(1),
   version: z.string().min(1),
   assets: assetManifestSchema,
+  player: playerSchema.default({ name: "Hero", maxHp: 3 }),
   start: z.object({
     mapId: z.string().min(1),
     spawnId: z.string().min(1)
@@ -157,6 +166,7 @@ export type KnowledgeEntry = z.infer<typeof knowledgeSchema>;
 export type BattleDefinition = z.infer<typeof battleSchema>;
 export type TilesetAsset = z.infer<typeof tilesetAssetSchema>;
 export type SpriteAsset = z.infer<typeof spriteAssetSchema>;
+export type PlayerDefinition = z.infer<typeof playerSchema>;
 export type KitsuneProject = z.infer<typeof kitsuneProjectSchema>;
 
 export type ValidationResult =
@@ -187,6 +197,10 @@ export function validateReferences(project: KitsuneProject): string[] {
   const battleIds = new Set(project.battles.map((battle) => battle.id));
   const tilesetKeys = new Set(Object.keys(project.assets.tilesets));
   const spriteKeys = new Set(Object.keys(project.assets.sprites));
+
+  if (project.player.spriteKey && !spriteKeys.has(project.player.spriteKey)) {
+    issues.push(`player.spriteKey references missing sprite "${project.player.spriteKey}"`);
+  }
 
   if (!mapIds.has(project.start.mapId)) {
     issues.push(`start.mapId references missing map "${project.start.mapId}"`);

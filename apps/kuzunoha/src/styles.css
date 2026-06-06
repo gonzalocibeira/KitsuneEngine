@@ -159,6 +159,17 @@ input {
   margin: 0.25rem 0 0;
 }
 
+.knowledge-image {
+  display: block;
+  max-width: 100%;
+  max-height: 220px;
+  margin-top: 0.5rem;
+  border: 1px solid rgba(245, 241, 232, 0.2);
+  border-radius: 6px;
+  background: rgba(17, 23, 21, 0.85);
+  object-fit: contain;
+}
+
 .modal {
   left: 50%;
   bottom: 1.25rem;

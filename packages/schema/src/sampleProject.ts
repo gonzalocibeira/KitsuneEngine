@@ -74,6 +74,11 @@ export const sampleProject: KitsuneProject = {
       trigger: sprite("trigger", "Tiny Dungeon frame 67", tinyDungeonSheet, 66)
     }
   },
+  player: {
+    name: "Hero",
+    spriteKey: "hero",
+    maxHp: 3
+  },
   start: {
     mapId: "library-yard",
     spawnId: "start"
