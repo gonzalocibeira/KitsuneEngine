@@ -139,6 +139,42 @@ input {
   box-shadow: 0 12px 30px rgba(0, 0, 0, 0.24);
 }
 
+.world-hud {
+  position: fixed;
+  z-index: 10;
+  top: 1rem;
+  left: 1rem;
+  min-width: 170px;
+  border: 1px solid rgba(245, 241, 232, 0.28);
+  border-radius: 8px;
+  padding: 0.65rem 0.75rem;
+  background: rgba(17, 23, 21, 0.9);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.32);
+  pointer-events: none;
+}
+
+.world-hud strong {
+  display: block;
+  color: #fff7ec;
+  font-size: 0.95rem;
+}
+
+.world-hud dl {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0.15rem 0.85rem;
+  margin: 0.35rem 0 0;
+  color: #c9d4cf;
+  font-size: 0.8rem;
+}
+
+.world-hud dd {
+  margin: 0;
+  color: #f8d87f;
+  font-weight: 800;
+  text-align: right;
+}
+
 .key-acquisition {
   position: fixed;
   z-index: 15;
@@ -362,6 +398,13 @@ input {
 }
 
 @media (max-width: 760px), (pointer: coarse) {
+  .world-hud {
+    top: 0.65rem;
+    left: 0.65rem;
+    min-width: 145px;
+    padding: 0.5rem 0.6rem;
+  }
+
   .touch-controls {
     display: grid;
   }

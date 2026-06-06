@@ -190,27 +190,41 @@ test("Kuzunoha unlocks content with persistent inventory keys", async ({ page })
   await page.goto("http://127.0.0.1:5174");
   await page.evaluate(() => localStorage.clear());
   await page.getByRole("button", { name: "Play Sample Quest" }).click();
+  const worldHud = page.getByLabel("World status");
+  await expect(worldHud).toContainText("Library Yard");
+  await expect(worldHud).toContainText("Diary0");
+  await expect(worldHud).toContainText("Inventory0");
 
   await touchActions(page, ["Up", "Up", "Right", "Right", "Right", "Right", "Right", "Up", "Right", "Right", "Right", "Right", "Act"]);
   await expect(page.getByText("The annex door is locked. Find its key.")).toBeVisible();
+  await expect(worldHud).toBeHidden();
   await page.getByRole("button", { name: "Continue" }).click();
+  await expect(worldHud).toBeVisible();
 
   await touchActions(page, ["Up", "Up", "Left", "Left", "Left", "Left", "Left", "Left", "Left", "Act"]);
   await expect(page.getByText("The lantern marks attention")).toBeVisible();
+  await expect(worldHud).toBeHidden();
   await page.getByRole("button", { name: "Continue" }).click();
   const keyAcquired = page.getByRole("dialog", { name: "Key acquired" });
   await expect(keyAcquired).toBeVisible();
   await expect(keyAcquired.getByText("Annex Key")).toBeVisible();
+  await expect(worldHud).toBeHidden();
   await keyAcquired.getByRole("button", { name: "Continue" }).click();
+  await expect(worldHud).toContainText("Diary1");
+  await expect(worldHud).toContainText("Inventory1");
 
   await page.keyboard.press("Escape");
+  await expect(worldHud).toBeHidden();
   await page.locator("summary").filter({ hasText: "Inventory" }).click();
   await expect(page.getByText("Annex Key")).toBeVisible();
   await page.keyboard.press("Escape");
+  await expect(worldHud).toBeVisible();
 
   await touchActions(page, ["Right", "Right", "Right", "Right", "Right", "Right", "Right", "Right", "Down", "Act"]);
   await expect(page.getByText("The annex door opens into a quieter study room.")).toBeVisible();
+  await expect(worldHud).toBeHidden();
   await page.getByRole("button", { name: "Continue" }).click();
+  await expect(worldHud).toContainText("Study Annex");
   await page.keyboard.press("Escape");
   await expect(page.getByText("Study Annex")).toBeVisible();
 
@@ -226,12 +240,17 @@ test("Kuzunoha saves, continues, pauses, and preserves text input", async ({ pag
   await page.evaluate(() => localStorage.clear());
   await page.getByRole("button", { name: "Play Sample Quest" }).click();
   await expect(page.locator("canvas")).toBeVisible();
+  const worldHud = page.getByLabel("World status");
+  await expect(worldHud).toBeVisible();
 
   await move(page, "ArrowRight", 8);
+  await expect(worldHud).toBeVisible();
   await expect(page.getByRole("dialog", { name: "Confirm battle" })).toHaveCount(0);
   await page.keyboard.press("Space");
   await expect(page.getByRole("dialog", { name: "Confirm battle" })).toContainText("Challenge the Restless Page?");
+  await expect(worldHud).toBeHidden();
   await page.getByRole("button", { name: "Start Battle" }).click();
+  await expect(worldHud).toBeHidden();
   const answer = page.getByPlaceholder("Type the answer");
   await expect(answer).toBeFocused();
   await page.keyboard.type("wasd");
