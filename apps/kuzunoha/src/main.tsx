@@ -100,6 +100,11 @@ function App() {
     refresh();
   }
 
+  function confirmBattle() {
+    handle?.runtime.confirmBattle();
+    refresh();
+  }
+
   function answerBattle(event: React.FormEvent) {
     event.preventDefault();
     if (!battleAnswer.trim()) return;
@@ -154,6 +159,15 @@ function App() {
             </p>
           ))}
           <button autoFocus onClick={closeOverlay}>Continue</button>
+        </section>
+      )}
+      {snapshot.overlay.type === "battleConfirmation" && !paused && (
+        <section className="modal dialogue" role="dialog" aria-label="Confirm battle">
+          <p>{snapshot.overlay.message}</p>
+          <div className="button-row">
+            <button autoFocus className="primary" onClick={confirmBattle}>Start Battle</button>
+            <button onClick={closeOverlay}>Cancel</button>
+          </div>
         </section>
       )}
       {snapshot.overlay.type === "battle" && !paused && (
@@ -386,14 +400,10 @@ class WorldScene extends Phaser.Scene {
       for (let x = 0; x < map.width; x += 1) {
         const tile = map.layers.ground.tiles[y][x];
         const decor = map.layers.decor.tiles[y][x];
-        const blocked = tileNumber(map.layers.collision.tiles[y][x]) > 0;
         this.add.rectangle(x * map.tileSize, y * map.tileSize, map.tileSize, map.tileSize, 0x111715).setOrigin(0);
         this.renderTile(resolveTile(this.project, fallbackTileset, tile), x, y, map.tileSize);
         if (tileNumber(decor) > 0) {
           this.renderTile(resolveTile(this.project, fallbackTileset, decor), x, y, map.tileSize, 0.92);
-        }
-        if (blocked) {
-          this.add.rectangle(x * map.tileSize + map.tileSize / 2, y * map.tileSize + map.tileSize / 2, 18, 18, 0x1c2421, 0.85).setStrokeStyle(2, 0xfff7ec);
         }
       }
     }
@@ -620,6 +630,9 @@ function isRuntimeOverlay(overlay: SaveState["overlay"]): boolean {
   if (overlay.type === "none") return true;
   if (overlay.type === "dialogue") {
     return Array.isArray(overlay.messages) && overlay.messages.every((message) => typeof message?.text === "string");
+  }
+  if (overlay.type === "battleConfirmation") {
+    return typeof overlay.battleId === "string" && typeof overlay.message === "string";
   }
   return overlay.type === "battle" &&
     typeof overlay.battle?.battleId === "string" &&

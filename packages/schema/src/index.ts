@@ -69,6 +69,7 @@ export const entitySchema = z.object({
   name: z.string().min(1),
   kind: z.enum(["npc", "object", "door", "trigger"]),
   position: positionSchema,
+  collidable: z.boolean().default(true),
   spriteKey: z.string().min(1).optional(),
   event: z.array(eventCommandSchema).default([])
 });
@@ -105,6 +106,7 @@ export const battleSchema = z.object({
   id: z.string().min(1),
   name: z.string().min(1),
   enemyName: z.string().min(1),
+  confirmationMessage: z.string().min(1).default("Start this battle?"),
   victoryFlag: z.string().min(1),
   requiredKnowledgeIds: z.array(z.string().min(1)).min(1)
 });

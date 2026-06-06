@@ -1,0 +1,1300 @@
+{
+  "schemaVersion": 0,
+  "id": "sample-learning-quest",
+  "title": "The Archivist's Trial",
+  "version": "0.1.0",
+  "assets": {
+    "tilesets": {
+      "kenney-tiny-town": {
+        "key": "kenney-tiny-town",
+        "label": "Kenney Tiny Town",
+        "image": "/assets/kenney/tiny-town/Tilemap/tilemap_packed.png",
+        "tileSize": 16,
+        "columns": 12,
+        "rows": 11
+      },
+      "kenney-tiny-dungeon": {
+        "key": "kenney-tiny-dungeon",
+        "label": "Kenney Tiny Dungeon",
+        "image": "/assets/kenney/tiny-dungeon/Tilemap/tilemap_packed.png",
+        "tileSize": 16,
+        "columns": 12,
+        "rows": 11
+      },
+      "kenney-rpg-urban-pack": {
+        "key": "kenney-rpg-urban-pack",
+        "label": "Kenney RPG Urban Pack",
+        "image": "/assets/kenney/rpg-urban-pack/Tilemap/tilemap_packed.png",
+        "tileSize": 16,
+        "columns": 27,
+        "rows": 18
+      }
+    },
+    "sprites": {
+      "hero": {
+        "key": "hero",
+        "label": "Tiny Dungeon frame 73",
+        "image": "/assets/kenney/tiny-dungeon/Tilemap/tilemap_packed.png",
+        "frameWidth": 16,
+        "frameHeight": 16,
+        "frame": 72,
+        "columns": 12,
+        "rows": 11
+      },
+      "npc": {
+        "key": "npc",
+        "label": "Tiny Dungeon frame 74",
+        "image": "/assets/kenney/tiny-dungeon/Tilemap/tilemap_packed.png",
+        "frameWidth": 16,
+        "frameHeight": 16,
+        "frame": 73,
+        "columns": 12,
+        "rows": 11
+      },
+      "npc-frame-75": {
+        "key": "npc-frame-75",
+        "label": "Tiny Dungeon frame 75",
+        "image": "/assets/kenney/tiny-dungeon/Tilemap/tilemap_packed.png",
+        "frameWidth": 16,
+        "frameHeight": 16,
+        "frame": 74,
+        "columns": 12,
+        "rows": 11
+      },
+      "npc-frame-76": {
+        "key": "npc-frame-76",
+        "label": "Tiny Dungeon frame 76",
+        "image": "/assets/kenney/tiny-dungeon/Tilemap/tilemap_packed.png",
+        "frameWidth": 16,
+        "frameHeight": 16,
+        "frame": 75,
+        "columns": 12,
+        "rows": 11
+      },
+      "npc-frame-85": {
+        "key": "npc-frame-85",
+        "label": "Tiny Dungeon frame 85",
+        "image": "/assets/kenney/tiny-dungeon/Tilemap/tilemap_packed.png",
+        "frameWidth": 16,
+        "frameHeight": 16,
+        "frame": 84,
+        "columns": 12,
+        "rows": 11
+      },
+      "npc-frame-86": {
+        "key": "npc-frame-86",
+        "label": "Tiny Dungeon frame 86",
+        "image": "/assets/kenney/tiny-dungeon/Tilemap/tilemap_packed.png",
+        "frameWidth": 16,
+        "frameHeight": 16,
+        "frame": 85,
+        "columns": 12,
+        "rows": 11
+      },
+      "npc-frame-87": {
+        "key": "npc-frame-87",
+        "label": "Tiny Dungeon frame 87",
+        "image": "/assets/kenney/tiny-dungeon/Tilemap/tilemap_packed.png",
+        "frameWidth": 16,
+        "frameHeight": 16,
+        "frame": 86,
+        "columns": 12,
+        "rows": 11
+      },
+      "npc-frame-88": {
+        "key": "npc-frame-88",
+        "label": "Tiny Dungeon frame 88",
+        "image": "/assets/kenney/tiny-dungeon/Tilemap/tilemap_packed.png",
+        "frameWidth": 16,
+        "frameHeight": 16,
+        "frame": 87,
+        "columns": 12,
+        "rows": 11
+      },
+      "object": {
+        "key": "object",
+        "label": "Tiny Town frame 62",
+        "image": "/assets/kenney/tiny-town/Tilemap/tilemap_packed.png",
+        "frameWidth": 16,
+        "frameHeight": 16,
+        "frame": 61,
+        "columns": 12,
+        "rows": 11
+      },
+      "door": {
+        "key": "door",
+        "label": "Tiny Town frame 43",
+        "image": "/assets/kenney/tiny-town/Tilemap/tilemap_packed.png",
+        "frameWidth": 16,
+        "frameHeight": 16,
+        "frame": 42,
+        "columns": 12,
+        "rows": 11
+      },
+      "trigger": {
+        "key": "trigger",
+        "label": "Tiny Dungeon frame 67",
+        "image": "/assets/kenney/tiny-dungeon/Tilemap/tilemap_packed.png",
+        "frameWidth": 16,
+        "frameHeight": 16,
+        "frame": 66,
+        "columns": 12,
+        "rows": 11
+      },
+      "sprite-kenney-tiny-dungeon-28": {
+        "key": "sprite-kenney-tiny-dungeon-28",
+        "label": "Kenney Tiny Dungeon frame 28",
+        "image": "/assets/kenney/tiny-dungeon/Tilemap/tilemap_packed.png",
+        "frameWidth": 16,
+        "frameHeight": 16,
+        "frame": 27,
+        "columns": 12,
+        "rows": 11
+      },
+      "sprite-kenney-tiny-dungeon-99": {
+        "key": "sprite-kenney-tiny-dungeon-99",
+        "label": "Kenney Tiny Dungeon frame 99",
+        "image": "/assets/kenney/tiny-dungeon/Tilemap/tilemap_packed.png",
+        "frameWidth": 16,
+        "frameHeight": 16,
+        "frame": 98,
+        "columns": 12,
+        "rows": 11
+      },
+      "sprite-kenney-rpg-urban-pack-166": {
+        "key": "sprite-kenney-rpg-urban-pack-166",
+        "label": "Kenney RPG Urban Pack frame 166",
+        "image": "/assets/kenney/rpg-urban-pack/Tilemap/tilemap_packed.png",
+        "frameWidth": 16,
+        "frameHeight": 16,
+        "frame": 165,
+        "columns": 27,
+        "rows": 18
+      },
+      "sprite-kenney-tiny-town-105": {
+        "key": "sprite-kenney-tiny-town-105",
+        "label": "Kenney Tiny Town frame 105",
+        "image": "/assets/kenney/tiny-town/Tilemap/tilemap_packed.png",
+        "frameWidth": 16,
+        "frameHeight": 16,
+        "frame": 104,
+        "columns": 12,
+        "rows": 11
+      },
+      "sprite-kenney-tiny-dungeon-85": {
+        "key": "sprite-kenney-tiny-dungeon-85",
+        "label": "Kenney Tiny Dungeon frame 85",
+        "image": "/assets/kenney/tiny-dungeon/Tilemap/tilemap_packed.png",
+        "frameWidth": 16,
+        "frameHeight": 16,
+        "frame": 84,
+        "columns": 12,
+        "rows": 11
+      },
+      "sprite-kenney-tiny-dungeon-20": {
+        "key": "sprite-kenney-tiny-dungeon-20",
+        "label": "Kenney Tiny Dungeon frame 20",
+        "image": "/assets/kenney/tiny-dungeon/Tilemap/tilemap_packed.png",
+        "frameWidth": 16,
+        "frameHeight": 16,
+        "frame": 19,
+        "columns": 12,
+        "rows": 11
+      },
+      "sprite-kenney-tiny-town-86": {
+        "key": "sprite-kenney-tiny-town-86",
+        "label": "Kenney Tiny Town frame 86",
+        "image": "/assets/kenney/tiny-town/Tilemap/tilemap_packed.png",
+        "frameWidth": 16,
+        "frameHeight": 16,
+        "frame": 85,
+        "columns": 12,
+        "rows": 11
+      },
+      "sprite-kenney-tiny-dungeon-73": {
+        "key": "sprite-kenney-tiny-dungeon-73",
+        "label": "Kenney Tiny Dungeon frame 73",
+        "image": "/assets/kenney/tiny-dungeon/Tilemap/tilemap_packed.png",
+        "frameWidth": 16,
+        "frameHeight": 16,
+        "frame": 72,
+        "columns": 12,
+        "rows": 11
+      }
+    }
+  },
+  "player": {
+    "name": "田中さん",
+    "spriteKey": "sprite-kenney-tiny-dungeon-99",
+    "maxHp": 3
+  },
+  "start": {
+    "mapId": "library-yard",
+    "spawnId": "start"
+  },
+  "maps": [
+    {
+      "id": "library-yard",
+      "name": "Library Yard",
+      "width": 14,
+      "height": 10,
+      "tileSize": 32,
+      "tilesetKey": "kenney-tiny-town",
+      "layers": {
+        "ground": {
+          "id": "ground",
+          "name": "Ground",
+          "tiles": [
+            [
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1
+            ],
+            [
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1
+            ],
+            [
+              1,
+              1,
+              1,
+              {
+                "tilesetKey": "kenney-tiny-town",
+                "tile": 1
+              },
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1
+            ],
+            [
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1
+            ],
+            [
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1
+            ],
+            [
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1
+            ],
+            [
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1
+            ],
+            [
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1
+            ],
+            [
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1
+            ],
+            [
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1
+            ]
+          ]
+        },
+        "decor": {
+          "id": "decor",
+          "name": "Decor",
+          "tiles": [
+            [
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0
+            ],
+            [
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0
+            ],
+            [
+              0,
+              0,
+              0,
+              2,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0
+            ],
+            [
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0
+            ],
+            [
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              3,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0
+            ],
+            [
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0
+            ],
+            [
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              2,
+              0,
+              0,
+              0,
+              0
+            ],
+            [
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0
+            ],
+            [
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0
+            ],
+            [
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0
+            ]
+          ]
+        },
+        "collision": {
+          "id": "collision",
+          "name": "Collision",
+          "tiles": [
+            [
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1
+            ],
+            [
+              1,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              1
+            ],
+            [
+              1,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              1
+            ],
+            [
+              1,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              1
+            ],
+            [
+              1,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              1
+            ],
+            [
+              1,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              1
+            ],
+            [
+              1,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              1
+            ],
+            [
+              1,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              1
+            ],
+            [
+              1,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              1
+            ],
+            [
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1
+            ]
+          ]
+        }
+      },
+      "spawns": {
+        "start": {
+          "x": 2,
+          "y": 7
+        },
+        "from-annex": {
+          "x": 12,
+          "y": 4
+        }
+      },
+      "entities": [
+        {
+          "id": "guide",
+          "name": "Archivist",
+          "kind": "npc",
+          "position": {
+            "x": 4,
+            "y": 6
+          },
+          "spriteKey": "sprite-kenney-tiny-dungeon-85",
+          "event": [
+            {
+              "type": "dialogue",
+              "speaker": "Archivist",
+              "text": "Gather three ideas from the yard, then face the trial stone."
+            },
+            {
+              "type": "grantKnowledge",
+              "knowledgeId": "observe"
+            }
+          ]
+        },
+        {
+          "id": "lantern",
+          "name": "Signal Lantern",
+          "kind": "object",
+          "position": {
+            "x": 3,
+            "y": 2
+          },
+          "spriteKey": "sprite-kenney-rpg-urban-pack-166",
+          "event": [
+            {
+              "type": "dialogue",
+              "text": "The lantern marks attention: notice first, name second."
+            },
+            {
+              "type": "grantKnowledge",
+              "knowledgeId": "attention"
+            }
+          ]
+        },
+        {
+          "id": "fountain",
+          "name": "Quiet Fountain",
+          "kind": "object",
+          "position": {
+            "x": 6,
+            "y": 4
+          },
+          "spriteKey": "sprite-kenney-tiny-town-105",
+          "event": [
+            {
+              "type": "dialogue",
+              "text": "Repeating an idea after a pause makes it easier to keep."
+            },
+            {
+              "type": "grantKnowledge",
+              "knowledgeId": "spacing"
+            }
+          ]
+        },
+        {
+          "id": "annex-door",
+          "name": "Annex Door",
+          "kind": "door",
+          "position": {
+            "x": 12,
+            "y": 4
+          },
+          "spriteKey": "sprite-kenney-tiny-town-86",
+          "event": [
+            {
+              "type": "dialogue",
+              "text": "The annex door opens into a quieter study room."
+            },
+            {
+              "type": "transferMap",
+              "mapId": "study-annex",
+              "spawnId": "entry"
+            }
+          ]
+        },
+        {
+          "id": "trial-stone",
+          "name": "Trial Stone",
+          "kind": "trigger",
+          "position": {
+            "x": 10,
+            "y": 7
+          },
+          "spriteKey": "sprite-kenney-tiny-dungeon-20",
+          "event": [
+            {
+              "type": "branch",
+              "flag": "trial_complete",
+              "expected": true,
+              "then": [
+                {
+                  "type": "dialogue",
+                  "text": "The trial stone is quiet. You already passed."
+                }
+              ],
+              "else": [
+                {
+                  "type": "dialogue",
+                  "text": "The stone tests whether knowledge has become memory."
+                },
+                {
+                  "type": "startBattle",
+                  "battleId": "memory-trial"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "study-annex",
+      "name": "Study Annex",
+      "width": 10,
+      "height": 8,
+      "tileSize": 32,
+      "tilesetKey": "kenney-tiny-dungeon",
+      "layers": {
+        "ground": {
+          "id": "ground",
+          "name": "Ground",
+          "tiles": [
+            [
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1
+            ],
+            [
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1
+            ],
+            [
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1
+            ],
+            [
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1
+            ],
+            [
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1
+            ],
+            [
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1
+            ],
+            [
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1
+            ],
+            [
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1
+            ]
+          ]
+        },
+        "decor": {
+          "id": "decor",
+          "name": "Decor",
+          "tiles": [
+            [
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0
+            ],
+            [
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0
+            ],
+            [
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0
+            ],
+            [
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0
+            ],
+            [
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0
+            ],
+            [
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0
+            ],
+            [
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0
+            ],
+            [
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0
+            ]
+          ]
+        },
+        "collision": {
+          "id": "collision",
+          "name": "Collision",
+          "tiles": [
+            [
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0
+            ],
+            [
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0
+            ],
+            [
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0
+            ],
+            [
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0
+            ],
+            [
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0
+            ],
+            [
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0
+            ],
+            [
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0
+            ],
+            [
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0
+            ]
+          ]
+        }
+      },
+      "spawns": {
+        "entry": {
+          "x": 2,
+          "y": 4
+        }
+      },
+      "entities": [
+        {
+          "id": "annex-note",
+          "name": "Margin Note",
+          "kind": "object",
+          "position": {
+            "x": 5,
+            "y": 3
+          },
+          "spriteKey": "sprite-kenney-tiny-dungeon-73",
+          "event": [
+            {
+              "type": "dialogue",
+              "text": "A useful note connects a fact to a context where it matters."
+            },
+            {
+              "type": "grantKnowledge",
+              "knowledgeId": "context"
+            }
+          ]
+        },
+        {
+          "id": "return-door",
+          "name": "Return Door",
+          "kind": "door",
+          "position": {
+            "x": 1,
+            "y": 4
+          },
+          "spriteKey": "sprite-kenney-tiny-town-86",
+          "event": [
+            {
+              "type": "transferMap",
+              "mapId": "library-yard",
+              "spawnId": "from-annex"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "knowledge": [
+    {
+      "id": "observe",
+      "title": "Observe",
+      "summary": "Notice the thing before trying to memorize it.",
+      "prompt": "What should happen before naming an idea?",
+      "answer": "Observe it",
+      "body": "Observation anchors a new idea in a concrete moment.",
+      "tags": [
+        "learning",
+        "attention"
+      ]
+    },
+    {
+      "id": "attention",
+      "title": "Attention",
+      "summary": "Focused attention makes an idea available for memory.",
+      "prompt": "What makes an idea available for memory?",
+      "answer": "Attention",
+      "body": "A learner remembers more when attention is deliberate.",
+      "tags": [
+        "learning"
+      ]
+    },
+    {
+      "id": "spacing",
+      "title": "Spacing",
+      "summary": "Reviewing after a pause strengthens recall.",
+      "prompt": "What strengthens recall after a pause?",
+      "answer": "Spacing",
+      "body": "Spacing turns repeated exposure into stronger recall.",
+      "tags": [
+        "learning",
+        "memory"
+      ]
+    },
+    {
+      "id": "context",
+      "title": "Context",
+      "summary": "Knowledge is easier to use when tied to a situation.",
+      "prompt": "What helps knowledge become usable?",
+      "answer": "Context",
+      "body": "Context connects facts to real decisions and examples.",
+      "tags": [
+        "learning",
+        "transfer"
+      ]
+    }
+  ],
+  "battles": [
+    {
+      "id": "memory-trial",
+      "name": "Memory Trial",
+      "enemyName": "Restless Page",
+      "confirmationMessage": "Challenge the Restless Page?",
+      "victoryFlag": "trial_complete",
+      "requiredKnowledgeIds": [
+        "observe",
+        "attention",
+        "spacing",
+        "context"
+      ]
+    }
+  ]
+}

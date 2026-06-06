@@ -125,6 +125,7 @@ function App() {
         name: `New ${entityKind}`,
         kind: entityKind,
         position: { x, y },
+        collidable: true,
         spriteKey: entityKind,
         event: defaultEvent(entityKind, project)
       };
@@ -689,6 +690,14 @@ function EntityPanel({
               <input type="number" value={entity.position.y} onChange={(event) => updateEntity((draft) => { draft.position.y = Number(event.target.value); })} />
             </label>
           </div>
+          <label className="checkbox-row">
+            <input
+              type="checkbox"
+              checked={entity.collidable !== false}
+              onChange={(event) => updateEntity((draft) => { draft.collidable = event.target.checked; })}
+            />
+            Blocks player movement
+          </label>
           <EventEditor project={project} commands={entity.event} updateCommands={(commands) => updateEntity((draft) => { draft.event = commands; })} />
           <button className="danger" onClick={deleteEntity}>Delete Entity</button>
         </div>
@@ -745,8 +754,8 @@ function SpriteField({
   }
 
   return (
-    <label>
-      {label}
+    <div className="sprite-field-control">
+      <span className="field-label">{label}</span>
       <div className="sprite-field">
         <span className="sprite-preview" style={spritePreviewStyle(currentSprite)} />
         <button type="button" onClick={openSpritePicker}>Choose Sprite</button>
@@ -797,7 +806,7 @@ function SpriteField({
           </section>
         </div>
       )}
-    </label>
+    </div>
   );
 }
 
@@ -1052,6 +1061,7 @@ function BattlesPanel({ project, updateProject }: { project: KitsuneProject; upd
         id,
         name: "New Battle",
         enemyName: "Enemy",
+        confirmationMessage: "Start this battle?",
         victoryFlag: `${id}_victory`,
         requiredKnowledgeIds: [draft.knowledge[0]?.id ?? ""].filter(Boolean)
       });
@@ -1090,6 +1100,7 @@ function BattlesPanel({ project, updateProject }: { project: KitsuneProject; upd
             <div className="focused-editor">
               <label>Name<input value={battle.name} onChange={(event) => updateBattle((draft) => { draft.name = event.target.value; })} /></label>
               <label>Enemy Name<input value={battle.enemyName} onChange={(event) => updateBattle((draft) => { draft.enemyName = event.target.value; })} /></label>
+              <label>Confirmation Message<textarea value={battle.confirmationMessage} onChange={(event) => updateBattle((draft) => { draft.confirmationMessage = event.target.value; })} /></label>
               <section className="question-list">
                 <h3>Notes</h3>
                 {battle.requiredKnowledgeIds.map((knowledgeId) => {
