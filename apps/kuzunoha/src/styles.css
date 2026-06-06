@@ -38,6 +38,11 @@ button.primary {
   font-weight: 800;
 }
 
+button.danger {
+  border-color: #8f554c;
+  color: #ffb7a8;
+}
+
 input {
   width: 100%;
   border: 1px solid #52645e;
@@ -88,6 +93,23 @@ input {
   margin-top: 1.25rem;
 }
 
+.continue-card {
+  width: 100%;
+  display: grid;
+  gap: 0.25rem;
+  margin-top: 1.25rem;
+  text-align: left;
+}
+
+.continue-card span,
+.map-name,
+.save-notice,
+.diary p,
+.controls-list dd {
+  color: #c9d4cf;
+  font-size: 0.9rem;
+}
+
 .file-button input {
   display: none;
 }
@@ -105,7 +127,8 @@ input {
 
 .hud,
 .modal,
-.touch-controls {
+.touch-controls,
+.mobile-pause {
   position: fixed;
   z-index: 10;
   border: 1px solid rgba(245, 241, 232, 0.18);
@@ -114,39 +137,11 @@ input {
   box-shadow: 0 12px 30px rgba(0, 0, 0, 0.24);
 }
 
-.top-left {
-  top: 1rem;
-  left: 1rem;
-  display: grid;
-  gap: 0.25rem;
-  padding: 0.65rem 0.8rem;
-}
-
-.top-left span,
-.diary p {
-  color: #c9d4cf;
-  font-size: 0.9rem;
-}
-
 .prompt {
   left: 50%;
   bottom: 1.25rem;
   transform: translateX(-50%);
   padding: 0.6rem 0.8rem;
-}
-
-.diary {
-  top: 1rem;
-  right: 1rem;
-  width: min(320px, calc(100vw - 2rem));
-  max-height: 55vh;
-  overflow: auto;
-  padding: 0.65rem 0.8rem;
-}
-
-.diary summary {
-  cursor: pointer;
-  font-weight: 800;
 }
 
 .diary article {
@@ -178,6 +173,81 @@ input {
   padding: 1rem;
 }
 
+.pause-backdrop {
+  position: fixed;
+  z-index: 20;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+  background: rgba(8, 12, 10, 0.72);
+  backdrop-filter: blur(4px);
+}
+
+.pause-menu {
+  width: min(520px, 100%);
+  max-height: calc(100vh - 2rem);
+  overflow: auto;
+  border: 1px solid rgba(245, 241, 232, 0.22);
+  border-radius: 10px;
+  padding: 1.25rem;
+  background: #18211f;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.48);
+}
+
+.pause-menu h1 {
+  margin: 0.25rem 0 0;
+}
+
+.pause-menu details {
+  border-top: 1px solid rgba(245, 241, 232, 0.15);
+  margin-top: 1rem;
+  padding-top: 0.85rem;
+}
+
+.pause-menu summary {
+  cursor: pointer;
+  font-weight: 800;
+}
+
+.pause-actions,
+.confirm-title {
+  display: flex;
+  gap: 0.65rem;
+  margin-top: 1rem;
+}
+
+.confirm-title {
+  flex-wrap: wrap;
+  border-top: 1px solid rgba(245, 241, 232, 0.15);
+  padding-top: 1rem;
+}
+
+.confirm-title p {
+  flex-basis: 100%;
+  margin: 0;
+}
+
+.pause-menu > .danger {
+  width: 100%;
+  margin-top: 1.25rem;
+}
+
+.controls-list {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.35rem 1rem;
+  margin-bottom: 0;
+}
+
+.controls-list dt {
+  font-weight: 800;
+}
+
+.controls-list dd {
+  margin: 0;
+}
+
 .dialogue p {
   font-size: 1.05rem;
   line-height: 1.5;
@@ -202,9 +272,15 @@ input {
 .touch-controls {
   left: 1rem;
   bottom: 1rem;
-  display: grid;
+  display: none;
   gap: 0.35rem;
   padding: 0.5rem;
+}
+
+.mobile-pause {
+  top: 1rem;
+  right: 1rem;
+  display: none;
 }
 
 .touch-controls div {
@@ -213,6 +289,14 @@ input {
 }
 
 @media (max-width: 760px), (pointer: coarse) {
+  .touch-controls {
+    display: grid;
+  }
+
+  .mobile-pause {
+    display: block;
+  }
+
   .prompt {
     bottom: 8.5rem;
   }
@@ -222,7 +306,8 @@ input {
   }
 
   .battle form,
-  .boot-actions {
+  .boot-actions,
+  .pause-actions {
     align-items: stretch;
     flex-direction: column;
   }

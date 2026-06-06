@@ -23,17 +23,21 @@ export type ActiveBattle = {
 };
 
 export type SaveState = {
+  saveVersion: 1;
   projectId: string;
   projectVersion: string;
   mapId: string;
   player: Position;
   flags: Record<string, boolean>;
   diary: string[];
+  overlay: RuntimeOverlay;
+  battleQuestionQueue: string[];
   updatedAt: string;
 };
 
-export type RuntimeSnapshot = SaveState & {
-  overlay: RuntimeOverlay;
+export type LegacySaveState = Omit<SaveState, "saveVersion" | "overlay" | "battleQuestionQueue">;
+
+export type RuntimeSnapshot = Omit<SaveState, "battleQuestionQueue"> & {
   currentMap: KitsuneMap;
   diaryEntries: KnowledgeEntry[];
 };
@@ -43,23 +47,30 @@ export class GameRuntime {
   private overlay: RuntimeOverlay = { type: "none" };
   private battleQuestionQueue: string[] = [];
 
-  constructor(private readonly project: KitsuneProject, save?: SaveState) {
+  constructor(private readonly project: KitsuneProject, save?: SaveState | LegacySaveState) {
     const startMap = this.requireMap(project.start.mapId);
     const start = startMap.spawns[project.start.spawnId] ?? { x: 1, y: 1 };
-    this.state = save ?? {
+    const restored = save ? restoreSave(save) : undefined;
+    this.state = restored ?? {
+      saveVersion: 1,
       projectId: project.id,
       projectVersion: project.version,
       mapId: startMap.id,
       player: { ...start },
       flags: {},
       diary: [],
+      overlay: { type: "none" },
+      battleQuestionQueue: [],
       updatedAt: new Date().toISOString()
     };
+    this.overlay = structuredClone(this.state.overlay);
+    this.battleQuestionQueue = [...this.state.battleQuestionQueue];
   }
 
   snapshot(): RuntimeSnapshot {
+    const { battleQuestionQueue: _battleQuestionQueue, ...state } = this.state;
     return {
-      ...structuredClone(this.state),
+      ...structuredClone(state),
       overlay: structuredClone(this.overlay),
       currentMap: this.currentMap(),
       diaryEntries: this.state.diary.map((id) => this.requireKnowledge(id))
@@ -165,7 +176,11 @@ export class GameRuntime {
   }
 
   saveState(): SaveState {
-    return structuredClone(this.state);
+    return structuredClone({
+      ...this.state,
+      overlay: this.overlay,
+      battleQuestionQueue: this.battleQuestionQueue
+    });
   }
 
   private runEvent(commands: EventCommand[]) {
@@ -273,6 +288,8 @@ export class GameRuntime {
   }
 
   private touch() {
+    this.state.overlay = structuredClone(this.overlay);
+    this.state.battleQuestionQueue = [...this.battleQuestionQueue];
     this.state.updatedAt = new Date().toISOString();
   }
 }
@@ -303,4 +320,16 @@ function shuffle<T>(values: T[]): T[] {
     [shuffled[index], shuffled[swapIndex]] = [shuffled[swapIndex], shuffled[index]];
   }
   return shuffled;
+}
+
+function restoreSave(save: SaveState | LegacySaveState): SaveState {
+  if ("saveVersion" in save && save.saveVersion === 1) {
+    return structuredClone(save);
+  }
+  return {
+    ...structuredClone(save),
+    saveVersion: 1,
+    overlay: { type: "none" },
+    battleQuestionQueue: []
+  };
 }

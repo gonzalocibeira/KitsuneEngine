@@ -3,7 +3,7 @@ import { createRoot } from "react-dom/client";
 import Phaser from "phaser";
 import { sampleProject } from "@kitsune/schema/sampleProject";
 import { validateProject, type Entity, type KitsuneMap, type KitsuneProject, type SpriteAsset, type TilesetAsset, type TileValue } from "@kitsune/schema";
-import { createSaveKey, GameRuntime, type RuntimeSnapshot, type SaveState } from "@kitsune/runtime-core";
+import { createSaveKey, GameRuntime, type LegacySaveState, type RuntimeSnapshot, type SaveState } from "@kitsune/runtime-core";
 import "./styles.css";
 
 type RuntimeHandle = {
@@ -11,31 +11,88 @@ type RuntimeHandle = {
   project: KitsuneProject;
 };
 
+type StoredGame = {
+  storageVersion: 1;
+  project: KitsuneProject;
+  save: SaveState;
+};
+
+const LATEST_SAVE_KEY = "kitsune-save:latest";
+
 function App() {
   const [handle, setHandle] = React.useState<RuntimeHandle | undefined>();
   const [snapshot, setSnapshot] = React.useState<RuntimeSnapshot | undefined>();
   const [error, setError] = React.useState("");
   const [battleAnswer, setBattleAnswer] = React.useState("");
+  const [paused, setPaused] = React.useState(false);
+  const [confirmTitle, setConfirmTitle] = React.useState(false);
+  const [saveNotice, setSaveNotice] = React.useState("");
+  const [latestSave, setLatestSave] = React.useState<StoredGame | undefined>(() => loadLatestSave());
   const runtimeRef = React.useRef<GameRuntime | undefined>(undefined);
+  const handleRef = React.useRef<RuntimeHandle | undefined>(undefined);
+  const inputEnabledRef = React.useRef(true);
 
   React.useEffect(() => {
+    handleRef.current = handle;
     runtimeRef.current = handle?.runtime;
     if (handle) setSnapshot(handle.runtime.snapshot());
   }, [handle]);
 
-  function loadProject(project: KitsuneProject) {
-    const save = loadSave(project);
+  React.useEffect(() => {
+    inputEnabledRef.current = !paused;
+  }, [paused]);
+
+  const refresh = React.useCallback((save = true) => {
+    const active = handleRef.current;
+    if (!active) return;
+    setSnapshot(active.runtime.snapshot());
+    if (save) {
+      const result = persistGame(active);
+      if (result.ok) setLatestSave(result.stored);
+      else setSaveNotice(result.message);
+    }
+  }, []);
+
+  React.useEffect(() => {
+    function handleKeyDown(event: KeyboardEvent) {
+      const active = handleRef.current;
+      if (!active || event.repeat || isTextInput(event.target)) return;
+      const current = active.runtime.snapshot();
+
+      if (event.key === "Escape" && current.overlay.type === "none") {
+        event.preventDefault();
+        setConfirmTitle(false);
+        setPaused((value) => !value);
+        return;
+      }
+
+      if (paused || (event.code !== "Space" && event.key !== "Enter")) return;
+
+      if (current.overlay.type === "dialogue") {
+        event.preventDefault();
+        active.runtime.closeOverlay();
+        refresh();
+        return;
+      }
+
+      if (current.overlay.type === "none") {
+        event.preventDefault();
+        active.runtime.interact();
+        refresh();
+      }
+    }
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [paused, refresh]);
+
+  function loadProject(project: KitsuneProject, save?: SaveState | LegacySaveState) {
     const runtime = new GameRuntime(project, save);
     setHandle({ runtime, project });
     setSnapshot(runtime.snapshot());
+    setPaused(false);
+    setConfirmTitle(false);
+    setSaveNotice("");
     setError("");
-  }
-
-  function refresh() {
-    if (!handle) return;
-    const next = handle.runtime.snapshot();
-    setSnapshot(next);
-    localStorage.setItem(createSaveKey(handle.project), JSON.stringify(handle.runtime.saveState()));
   }
 
   function closeOverlay() {
@@ -51,22 +108,44 @@ function App() {
     refresh();
   }
 
+  function saveNow() {
+    const active = handleRef.current;
+    if (!active) return;
+    const result = persistGame(active);
+    setSaveNotice(result.ok ? `${formatSaveTime(result.stored.save.updatedAt)}.` : result.message);
+    if (result.ok) setLatestSave(result.stored);
+  }
+
+  function returnToTitle() {
+    handleRef.current = undefined;
+    runtimeRef.current = undefined;
+    setHandle(undefined);
+    setSnapshot(undefined);
+    setPaused(false);
+    setConfirmTitle(false);
+    setSaveNotice("");
+    setLatestSave(loadLatestSave());
+  }
+
   if (!handle || !snapshot) {
-    return <BootScreen error={error} setError={setError} loadProject={loadProject} />;
+    return (
+      <BootScreen
+        error={error}
+        latestSave={latestSave}
+        setError={setError}
+        loadProject={loadProject}
+      />
+    );
   }
 
   const nearby = findNearbyEntity(snapshot);
+  const canPause = snapshot.overlay.type === "none";
 
   return (
     <main className="game-shell">
-      <GameCanvas runtimeRef={runtimeRef} onSnapshot={setSnapshot} project={handle.project} />
-      <section className="hud top-left">
-        <strong>{handle.project.title}</strong>
-        <span>{snapshot.currentMap.name}</span>
-      </section>
-      {nearby && snapshot.overlay.type === "none" && <section className="hud prompt">Press Space to inspect {nearby.name}</section>}
-      <Diary snapshot={snapshot} />
-      {snapshot.overlay.type === "dialogue" && (
+      <GameCanvas runtimeRef={runtimeRef} inputEnabledRef={inputEnabledRef} onRuntimeChange={refresh} project={handle.project} />
+      {nearby && canPause && !paused && <section className="hud prompt">Press Space to inspect {nearby.name}</section>}
+      {snapshot.overlay.type === "dialogue" && !paused && (
         <section className="modal dialogue">
           {snapshot.overlay.messages.map((message, index) => (
             <p key={`${message.text}-${index}`}>
@@ -77,7 +156,7 @@ function App() {
           <button autoFocus onClick={closeOverlay}>Continue</button>
         </section>
       )}
-      {snapshot.overlay.type === "battle" && (
+      {snapshot.overlay.type === "battle" && !paused && (
         <section className="modal battle">
           <p className="eyebrow">Battle</p>
           <h1>{snapshot.overlay.battle.enemyName}</h1>
@@ -92,28 +171,51 @@ function App() {
           </form>
         </section>
       )}
-      <TouchControls
-        move={(dx, dy) => {
-          handle.runtime.move(dx, dy);
-          refresh();
-        }}
-        interact={() => {
-          handle.runtime.interact();
-          refresh();
-        }}
-      />
+      {canPause && !paused && (
+        <>
+          <button className="mobile-pause" onClick={() => setPaused(true)}>Pause</button>
+          <TouchControls
+            move={(dx, dy) => {
+              handle.runtime.move(dx, dy);
+              refresh();
+            }}
+            interact={() => {
+              handle.runtime.interact();
+              refresh();
+            }}
+          />
+        </>
+      )}
+      {paused && (
+        <PauseMenu
+          confirmTitle={confirmTitle}
+          project={handle.project}
+          saveNotice={saveNotice}
+          snapshot={snapshot}
+          onCancelTitle={() => setConfirmTitle(false)}
+          onConfirmTitle={returnToTitle}
+          onRequestTitle={() => setConfirmTitle(true)}
+          onResume={() => {
+            setConfirmTitle(false);
+            setPaused(false);
+          }}
+          onSave={saveNow}
+        />
+      )}
     </main>
   );
 }
 
 function BootScreen({
   error,
+  latestSave,
   setError,
   loadProject
 }: {
   error: string;
+  latestSave?: StoredGame;
   setError: (error: string) => void;
-  loadProject: (project: KitsuneProject) => void;
+  loadProject: (project: KitsuneProject, save?: SaveState | LegacySaveState) => void;
 }) {
   return (
     <main className="boot">
@@ -121,6 +223,12 @@ function BootScreen({
         <p className="eyebrow">Kuzunoha Player</p>
         <h1>Load a learning quest</h1>
         <p>Import a Tamamo JSON project or play the bundled sample quest.</p>
+        {latestSave && (
+          <button className="continue-card" onClick={() => loadProject(latestSave.project, latestSave.save)}>
+            <strong>Continue {latestSave.project.title}</strong>
+            <span>{formatSaveTime(latestSave.save.updatedAt)}</span>
+          </button>
+        )}
         <div className="boot-actions">
           <button className="primary" onClick={() => loadProject(sampleProject)}>Play Sample Quest</button>
           <label className="file-button">
@@ -150,11 +258,13 @@ function BootScreen({
 
 function GameCanvas({
   runtimeRef,
-  onSnapshot,
+  inputEnabledRef,
+  onRuntimeChange,
   project
 }: {
   runtimeRef: React.MutableRefObject<GameRuntime | undefined>;
-  onSnapshot: (snapshot: RuntimeSnapshot) => void;
+  inputEnabledRef: React.MutableRefObject<boolean>;
+  onRuntimeChange: () => void;
   project: KitsuneProject;
 }) {
   const containerRef = React.useRef<HTMLDivElement | null>(null);
@@ -162,7 +272,7 @@ function GameCanvas({
   React.useEffect(() => {
     if (!containerRef.current) return;
 
-    const scene = new WorldScene(runtimeRef, onSnapshot, project);
+    const scene = new WorldScene(runtimeRef, inputEnabledRef, onRuntimeChange, project);
     const game = new Phaser.Game({
       type: Phaser.AUTO,
       parent: containerRef.current,
@@ -180,7 +290,7 @@ function GameCanvas({
     return () => {
       game.destroy(true);
     };
-  }, [project.id, project.version, runtimeRef, onSnapshot]);
+  }, [project.id, project.version, runtimeRef, inputEnabledRef, onRuntimeChange]);
 
   return <div ref={containerRef} className="game-canvas" />;
 }
@@ -195,7 +305,8 @@ class WorldScene extends Phaser.Scene {
 
   constructor(
     private readonly runtimeRef: React.MutableRefObject<GameRuntime | undefined>,
-    private readonly onSnapshot: (snapshot: RuntimeSnapshot) => void,
+    private readonly inputEnabledRef: React.MutableRefObject<boolean>,
+    private readonly onRuntimeChange: () => void,
     private readonly project: KitsuneProject
   ) {
     super("world");
@@ -223,7 +334,12 @@ class WorldScene extends Phaser.Scene {
 
   create() {
     this.cursors = this.input.keyboard?.createCursorKeys();
-    this.keys = this.input.keyboard?.addKeys("W,A,S,D,SPACE,ENTER") as Record<string, Phaser.Input.Keyboard.Key>;
+    this.keys = this.input.keyboard?.addKeys("W,A,S,D") as Record<string, Phaser.Input.Keyboard.Key>;
+    this.input.keyboard?.removeCapture(["W", "A", "S", "D"]);
+    this.scale.on(Phaser.Scale.Events.RESIZE, this.configureCamera, this);
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      this.scale.off(Phaser.Scale.Events.RESIZE, this.configureCamera, this);
+    });
     this.renderWorld();
   }
 
@@ -236,7 +352,7 @@ class WorldScene extends Phaser.Scene {
     }
     this.syncPlayer();
 
-    if (snapshot.overlay.type !== "none") return;
+    if (!this.inputEnabledRef.current || isTextInput(document.activeElement) || snapshot.overlay.type !== "none") return;
 
     const moveCooldown = time - this.lastMoveAt > 145;
     if (moveCooldown) {
@@ -248,15 +364,8 @@ class WorldScene extends Phaser.Scene {
         false;
       if (moved) {
         this.lastMoveAt = time;
-        this.onSnapshot(runtime.snapshot());
+        this.onRuntimeChange();
       }
-    }
-
-    const spacePressed = this.keys?.SPACE ? Phaser.Input.Keyboard.JustDown(this.keys.SPACE) : false;
-    const enterPressed = this.keys?.ENTER ? Phaser.Input.Keyboard.JustDown(this.keys.ENTER) : false;
-    if (spacePressed || enterPressed) {
-      runtime.interact();
-      this.onSnapshot(runtime.snapshot());
     }
   }
 
@@ -295,9 +404,21 @@ class WorldScene extends Phaser.Scene {
     });
 
     this.player = this.renderPlayer(map.tileSize);
-    this.cameras.main.setBounds(0, 0, map.width * map.tileSize, map.height * map.tileSize);
     this.cameras.main.startFollow(this.player, true, 0.2, 0.2);
     this.syncPlayer();
+    this.configureCamera();
+  }
+
+  private configureCamera() {
+    const runtime = this.runtimeRef.current;
+    if (!runtime) return;
+    const map = runtime.currentMap();
+    const camera = this.cameras.main;
+    const mapWidth = map.width * map.tileSize;
+    const mapHeight = map.height * map.tileSize;
+    const offsetX = Math.min(0, (mapWidth - camera.width) / 2);
+    const offsetY = Math.min(0, (mapHeight - camera.height) / 2);
+    camera.setBounds(offsetX, offsetY, Math.max(mapWidth, camera.width), Math.max(mapHeight, camera.height));
   }
 
   private renderTile(tile: ResolvedTile, x: number, y: number, tileSize: number, alpha = 1) {
@@ -351,10 +472,67 @@ class WorldScene extends Phaser.Scene {
   }
 }
 
+function PauseMenu({
+  confirmTitle,
+  project,
+  saveNotice,
+  snapshot,
+  onCancelTitle,
+  onConfirmTitle,
+  onRequestTitle,
+  onResume,
+  onSave
+}: {
+  confirmTitle: boolean;
+  project: KitsuneProject;
+  saveNotice: string;
+  snapshot: RuntimeSnapshot;
+  onCancelTitle: () => void;
+  onConfirmTitle: () => void;
+  onRequestTitle: () => void;
+  onResume: () => void;
+  onSave: () => void;
+}) {
+  return (
+    <section className="pause-backdrop" role="dialog" aria-modal="true" aria-label="Pause menu">
+      <div className="pause-menu">
+        <p className="eyebrow">Paused</p>
+        <h1>{project.title}</h1>
+        <p className="map-name">{snapshot.currentMap.name}</p>
+        <div className="pause-actions">
+          <button className="primary" autoFocus onClick={onResume}>Resume</button>
+          <button onClick={onSave}>Save Game</button>
+        </div>
+        {saveNotice && <p className="save-notice" role="status">{saveNotice}</p>}
+        <details>
+          <summary>Diary ({snapshot.diaryEntries.length})</summary>
+          <Diary snapshot={snapshot} />
+        </details>
+        <details>
+          <summary>Controls</summary>
+          <dl className="controls-list">
+            <dt>Move</dt><dd>Arrow keys or WASD</dd>
+            <dt>Interact</dt><dd>Space or Enter</dd>
+            <dt>Pause</dt><dd>Escape</dd>
+          </dl>
+        </details>
+        {!confirmTitle ? (
+          <button className="danger" onClick={onRequestTitle}>Return to Title</button>
+        ) : (
+          <div className="confirm-title">
+            <p>Return to title? Unsaved progress will be lost.</p>
+            <button className="danger" onClick={onConfirmTitle}>Return to Title</button>
+            <button onClick={onCancelTitle}>Cancel</button>
+          </div>
+        )}
+      </div>
+    </section>
+  );
+}
+
 function Diary({ snapshot }: { snapshot: RuntimeSnapshot }) {
   return (
-    <details className="hud diary">
-      <summary>Diary ({snapshot.diaryEntries.length})</summary>
+    <div className="diary">
       {snapshot.diaryEntries.length === 0 ? (
         <p>No knowledge collected yet.</p>
       ) : (
@@ -366,7 +544,7 @@ function Diary({ snapshot }: { snapshot: RuntimeSnapshot }) {
           </article>
         ))
       )}
-    </details>
+    </div>
   );
 }
 
@@ -384,15 +562,79 @@ function TouchControls({ move, interact }: { move: (dx: number, dy: number) => v
   );
 }
 
-function loadSave(project: KitsuneProject): SaveState | undefined {
-  const raw = localStorage.getItem(createSaveKey(project));
-  if (!raw) return undefined;
+function persistGame(handle: RuntimeHandle): { ok: true; stored: StoredGame } | { ok: false; message: string } {
+  const stored: StoredGame = {
+    storageVersion: 1,
+    project: handle.project,
+    save: handle.runtime.saveState()
+  };
   try {
-    const parsed = JSON.parse(raw) as SaveState;
-    return parsed.projectId === project.id && parsed.projectVersion === project.version ? parsed : undefined;
+    localStorage.setItem(createSaveKey(handle.project), JSON.stringify(stored.save));
+    localStorage.setItem(LATEST_SAVE_KEY, JSON.stringify(stored));
+    return { ok: true, stored };
+  } catch (caught) {
+    return {
+      ok: false,
+      message: caught instanceof Error ? `Could not save: ${caught.message}` : "Could not save in this browser."
+    };
+  }
+}
+
+function loadLatestSave(): StoredGame | undefined {
+  try {
+    const raw = localStorage.getItem(LATEST_SAVE_KEY);
+    if (!raw) return undefined;
+    const parsed = JSON.parse(raw) as Partial<StoredGame>;
+    if (parsed.storageVersion !== 1 || !parsed.project || !parsed.save) return undefined;
+    const result = validateProject(parsed.project);
+    if (!result.ok || !isSaveForProject(parsed.save, result.project)) return undefined;
+    return { storageVersion: 1, project: result.project, save: parsed.save };
   } catch {
     return undefined;
   }
+}
+
+function isSaveForProject(save: SaveState | LegacySaveState, project: KitsuneProject): boolean {
+  if (
+    save.projectId !== project.id ||
+    save.projectVersion !== project.version ||
+    !project.maps.some((map) => map.id === save.mapId) ||
+    !Number.isInteger(save.player?.x) ||
+    !Number.isInteger(save.player?.y) ||
+    typeof save.flags !== "object" ||
+    save.flags === null ||
+    !Array.isArray(save.diary) ||
+    !save.diary.every((id) => project.knowledge.some((entry) => entry.id === id)) ||
+    typeof save.updatedAt !== "string"
+  ) {
+    return false;
+  }
+
+  if (!("saveVersion" in save)) return true;
+  if (save.saveVersion !== 1 || !Array.isArray(save.battleQuestionQueue) || !isRuntimeOverlay(save.overlay)) return false;
+  return save.battleQuestionQueue.every((id) => project.knowledge.some((entry) => entry.id === id));
+}
+
+function isRuntimeOverlay(overlay: SaveState["overlay"]): boolean {
+  if (!overlay || typeof overlay !== "object") return false;
+  if (overlay.type === "none") return true;
+  if (overlay.type === "dialogue") {
+    return Array.isArray(overlay.messages) && overlay.messages.every((message) => typeof message?.text === "string");
+  }
+  return overlay.type === "battle" &&
+    typeof overlay.battle?.battleId === "string" &&
+    typeof overlay.battle?.prompt === "string" &&
+    typeof overlay.battle?.answer === "string" &&
+    typeof overlay.battle?.knowledgeId === "string";
+}
+
+function isTextInput(target: EventTarget | null): boolean {
+  return target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || (target instanceof HTMLElement && target.isContentEditable);
+}
+
+function formatSaveTime(value: string): string {
+  const date = new Date(value);
+  return Number.isNaN(date.valueOf()) ? "Saved game" : `Saved ${date.toLocaleString()}`;
 }
 
 function findNearbyEntity(snapshot: RuntimeSnapshot): Entity | undefined {

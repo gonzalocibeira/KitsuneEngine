@@ -104,4 +104,41 @@ describe("GameRuntime", () => {
       expect(snapshot.overlay.battle.questionsRemaining).toBe(project.battles[0].requiredKnowledgeIds.length);
     }
   });
+
+  it("restores an active dialogue exactly", () => {
+    const runtime = new GameRuntime(sampleProject);
+    runtime.interactAt({ x: 3, y: 2 });
+
+    const restored = new GameRuntime(sampleProject, runtime.saveState());
+
+    expect(restored.snapshot().overlay).toEqual(runtime.snapshot().overlay);
+    expect(restored.snapshot().diary).toContain("attention");
+  });
+
+  it("restores an active battle and its remaining shuffled questions", () => {
+    vi.spyOn(Math, "random").mockReturnValue(0);
+    const runtime = new GameRuntime(sampleProject);
+    runtime.interactAt({ x: 10, y: 7 });
+    const first = runtime.snapshot();
+    expect(first.overlay.type).toBe("battle");
+    if (first.overlay.type !== "battle") return;
+
+    runtime.answerBattle(first.overlay.battle.answer);
+    const saved = runtime.saveState();
+    const restored = new GameRuntime(sampleProject, saved);
+
+    expect(restored.snapshot().overlay).toEqual(runtime.snapshot().overlay);
+    expect(restored.saveState().battleQuestionQueue).toEqual(saved.battleQuestionQueue);
+  });
+
+  it("loads legacy exploration saves without an overlay", () => {
+    const runtime = new GameRuntime(sampleProject);
+    runtime.move(1, 0);
+    const { saveVersion: _saveVersion, overlay: _overlay, battleQuestionQueue: _battleQuestionQueue, ...legacy } = runtime.saveState();
+
+    const restored = new GameRuntime(sampleProject, legacy);
+
+    expect(restored.snapshot().player).toEqual(runtime.snapshot().player);
+    expect(restored.snapshot().overlay).toEqual({ type: "none" });
+  });
 });
