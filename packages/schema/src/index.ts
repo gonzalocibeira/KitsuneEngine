@@ -21,6 +21,11 @@ export const tileLayerSchema = z.object({
   tiles: z.array(z.array(tileValueSchema))
 });
 
+export const lockRequirementSchema = z.object({
+  keyId: z.string().min(1),
+  missingKeyMessage: z.string().min(1)
+});
+
 export type EventCommand =
   | { type: "dialogue"; speaker?: string; text: string }
   | { type: "grantKnowledge"; knowledgeId: string }
@@ -71,7 +76,9 @@ export const entitySchema = z.object({
   position: positionSchema,
   collidable: z.boolean().default(true),
   spriteKey: z.string().min(1).optional(),
-  event: z.array(eventCommandSchema).default([])
+  event: z.array(eventCommandSchema).default([]),
+  rewardKeyIds: z.array(z.string().min(1)).default([]),
+  lock: lockRequirementSchema.optional()
 });
 
 export const mapSchema = z.object({
@@ -108,7 +115,9 @@ export const battleSchema = z.object({
   enemyName: z.string().min(1),
   confirmationMessage: z.string().min(1).default("Start this battle?"),
   victoryFlag: z.string().min(1),
-  requiredKnowledgeIds: z.array(z.string().min(1)).min(1)
+  requiredKnowledgeIds: z.array(z.string().min(1)).min(1),
+  rewardKeyIds: z.array(z.string().min(1)).default([]),
+  lock: lockRequirementSchema.optional()
 });
 
 export const tilesetAssetSchema = z.object({
@@ -142,6 +151,12 @@ export const playerSchema = z.object({
   maxHp: z.number().int().positive().default(3)
 });
 
+export const keyDefinitionSchema = z.object({
+  id: z.string().min(1),
+  name: z.string().min(1),
+  spriteKey: z.string().min(1).optional()
+});
+
 export const kitsuneProjectSchema = z.object({
   schemaVersion: z.literal(SCHEMA_VERSION),
   id: z.string().min(1),
@@ -155,7 +170,8 @@ export const kitsuneProjectSchema = z.object({
   }),
   maps: z.array(mapSchema).min(1),
   knowledge: z.array(knowledgeSchema).min(1),
-  battles: z.array(battleSchema).default([])
+  battles: z.array(battleSchema).default([]),
+  keys: z.array(keyDefinitionSchema).default([])
 });
 
 export type Position = z.infer<typeof positionSchema>;
@@ -164,6 +180,8 @@ export type Entity = z.infer<typeof entitySchema>;
 export type KitsuneMap = z.infer<typeof mapSchema>;
 export type KnowledgeEntry = z.infer<typeof knowledgeSchema>;
 export type BattleDefinition = z.infer<typeof battleSchema>;
+export type KeyDefinition = z.infer<typeof keyDefinitionSchema>;
+export type LockRequirement = z.infer<typeof lockRequirementSchema>;
 export type TilesetAsset = z.infer<typeof tilesetAssetSchema>;
 export type SpriteAsset = z.infer<typeof spriteAssetSchema>;
 export type PlayerDefinition = z.infer<typeof playerSchema>;
@@ -195,11 +213,21 @@ export function validateReferences(project: KitsuneProject): string[] {
   const mapIds = new Set(project.maps.map((map) => map.id));
   const knowledgeIds = new Set(project.knowledge.map((entry) => entry.id));
   const battleIds = new Set(project.battles.map((battle) => battle.id));
+  const keyIds = new Set(project.keys.map((key) => key.id));
   const tilesetKeys = new Set(Object.keys(project.assets.tilesets));
   const spriteKeys = new Set(Object.keys(project.assets.sprites));
 
   if (project.player.spriteKey && !spriteKeys.has(project.player.spriteKey)) {
     issues.push(`player.spriteKey references missing sprite "${project.player.spriteKey}"`);
+  }
+
+  if (keyIds.size !== project.keys.length) {
+    issues.push("keys contain duplicate ids");
+  }
+  for (const key of project.keys) {
+    if (key.spriteKey && !spriteKeys.has(key.spriteKey)) {
+      issues.push(`${key.id} references missing sprite "${key.spriteKey}"`);
+    }
   }
 
   if (!mapIds.has(project.start.mapId)) {
@@ -239,6 +267,7 @@ export function validateReferences(project: KitsuneProject): string[] {
       if (entity.spriteKey && !spriteKeys.has(entity.spriteKey)) {
         issues.push(`${map.id}.${entity.id} references missing sprite "${entity.spriteKey}"`);
       }
+      validateKeyReferences(entity.rewardKeyIds, entity.lock?.keyId, keyIds, issues, `${map.id}.${entity.id}`);
       validateCommands(entity.event, { issues, mapIds, knowledgeIds, battleIds, context: `${map.id}.${entity.id}` });
     }
   }
@@ -249,9 +278,27 @@ export function validateReferences(project: KitsuneProject): string[] {
         issues.push(`${battle.id} references missing knowledge "${knowledgeId}"`);
       }
     }
+    validateKeyReferences(battle.rewardKeyIds, battle.lock?.keyId, keyIds, issues, battle.id);
   }
 
   return issues;
+}
+
+function validateKeyReferences(
+  rewardKeyIds: string[],
+  requiredKeyId: string | undefined,
+  keyIds: Set<string>,
+  issues: string[],
+  context: string
+) {
+  for (const keyId of rewardKeyIds) {
+    if (!keyIds.has(keyId)) {
+      issues.push(`${context} rewards missing key "${keyId}"`);
+    }
+  }
+  if (requiredKeyId && !keyIds.has(requiredKeyId)) {
+    issues.push(`${context} requires missing key "${requiredKeyId}"`);
+  }
 }
 
 function validateCommands(

@@ -346,7 +346,7 @@ label {
 
 .tab-strip {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 0.35rem;
 }
 
@@ -394,6 +394,13 @@ label {
 .placement-controls {
   display: grid;
   gap: 0.7rem;
+}
+
+.key-progression {
+  display: grid;
+  gap: 0.7rem;
+  border-top: 1px solid #3b4d46;
+  padding-top: 0.7rem;
 }
 
 .panel-heading,

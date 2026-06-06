@@ -106,4 +106,44 @@ describe("KitsuneProject schema", () => {
 
     expect(validateProject(mixed).ok).toBe(true);
   });
+
+  it("defaults key collections for older projects", () => {
+    const legacy = structuredClone(sampleProject);
+    delete (legacy as Partial<typeof legacy>).keys;
+    for (const map of legacy.maps) {
+      for (const entity of map.entities) {
+        delete (entity as Partial<typeof entity>).rewardKeyIds;
+        delete entity.lock;
+      }
+    }
+    for (const battle of legacy.battles) {
+      delete (battle as Partial<typeof battle>).rewardKeyIds;
+      delete battle.lock;
+    }
+
+    const result = validateProject(legacy);
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.project.keys).toEqual([]);
+      expect(result.project.maps[0].entities.every((entity) => entity.rewardKeyIds.length === 0)).toBe(true);
+      expect(result.project.battles.every((battle) => battle.rewardKeyIds.length === 0)).toBe(true);
+    }
+  });
+
+  it("reports duplicate and missing key references", () => {
+    const broken = structuredClone(sampleProject);
+    broken.keys.push({ ...broken.keys[0] });
+    broken.keys[0].spriteKey = "missing-key-sprite";
+    broken.maps[0].entities[0].rewardKeyIds = ["missing-reward"];
+    broken.battles[0].lock = { keyId: "missing-lock", missingKeyMessage: "Locked." };
+
+    const result = validateProject(broken);
+
+    expect(result.ok).toBe(false);
+    expect(result.issues.join("\n")).toContain("duplicate ids");
+    expect(result.issues.join("\n")).toContain("missing-key-sprite");
+    expect(result.issues.join("\n")).toContain("missing-reward");
+    expect(result.issues.join("\n")).toContain("missing-lock");
+  });
 });

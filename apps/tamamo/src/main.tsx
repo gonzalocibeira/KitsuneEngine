@@ -7,6 +7,7 @@ import {
   type BattleDefinition,
   type Entity,
   type EventCommand,
+  type KeyDefinition,
   type KitsuneMap,
   type KitsuneProject,
   type KnowledgeEntry,
@@ -21,12 +22,13 @@ const entityKinds: Entity["kind"][] = ["npc", "object", "door", "trigger"];
 
 type EditorLayer = "ground" | "decor" | "collision";
 type ToolMode = "paint" | "spawn";
-type RightPanelTab = "entities" | "knowledge" | "battles" | "player";
+type RightPanelTab = "entities" | "knowledge" | "battles" | "keys" | "player";
 const mapLayerKeys: EditorLayer[] = ["ground", "decor", "collision"];
 const rightPanelTabs: Array<{ id: RightPanelTab; label: string }> = [
   { id: "entities", label: "Entity" },
   { id: "knowledge", label: "Notes" },
   { id: "battles", label: "Battle" },
+  { id: "keys", label: "Keys" },
   { id: "player", label: "Player" }
 ];
 
@@ -163,7 +165,8 @@ function App() {
         position: { x, y },
         collidable: true,
         spriteKey: entityKind,
-        event: defaultEvent(entityKind, project)
+        event: defaultEvent(entityKind, project),
+        rewardKeyIds: []
       };
       updateSelectedMap((map) => {
         map.entities.push(entity);
@@ -515,6 +518,7 @@ function App() {
           )}
           {rightTab === "knowledge" && <KnowledgePanel project={project} updateProject={updateProject} />}
           {rightTab === "battles" && <BattlesPanel project={project} updateProject={updateProject} />}
+          {rightTab === "keys" && <KeysPanel project={project} updateProject={updateProject} />}
           {rightTab === "player" && <PlayerPanel project={project} updateProject={updateProject} />}
         </aside>
       </section>
@@ -753,6 +757,16 @@ function EntityPanel({
             Blocks player movement
           </label>
           <EventEditor project={project} commands={entity.event} updateCommands={(commands) => updateEntity((draft) => { draft.event = commands; })} />
+          <KeyProgressionFields
+            project={project}
+            rewardKeyIds={entity.rewardKeyIds ?? []}
+            lock={entity.lock}
+            update={(rewardKeyIds, lock) => updateEntity((draft) => {
+              draft.rewardKeyIds = rewardKeyIds;
+              if (lock) draft.lock = lock;
+              else delete draft.lock;
+            })}
+          />
           <button className="danger" onClick={deleteEntity}>Delete Entity</button>
         </div>
       ) : (
@@ -1117,7 +1131,8 @@ function BattlesPanel({ project, updateProject }: { project: KitsuneProject; upd
         enemyName: "Enemy",
         confirmationMessage: "Start this battle?",
         victoryFlag: `${id}_victory`,
-        requiredKnowledgeIds: [draft.knowledge[0]?.id ?? ""].filter(Boolean)
+        requiredKnowledgeIds: [draft.knowledge[0]?.id ?? ""].filter(Boolean),
+        rewardKeyIds: []
       });
       return draft;
     });
@@ -1175,6 +1190,16 @@ function BattlesPanel({ project, updateProject }: { project: KitsuneProject; upd
                   </div>
                 )}
               </section>
+              <KeyProgressionFields
+                project={project}
+                rewardKeyIds={battle.rewardKeyIds ?? []}
+                lock={battle.lock}
+                update={(rewardKeyIds, lock) => updateBattle((draft) => {
+                  draft.rewardKeyIds = rewardKeyIds;
+                  if (lock) draft.lock = lock;
+                  else delete draft.lock;
+                })}
+              />
               <button className="danger" onClick={deleteBattle}>Delete Battle</button>
             </div>
           )}
@@ -1182,6 +1207,161 @@ function BattlesPanel({ project, updateProject }: { project: KitsuneProject; upd
       ) : (
         <p className="muted">Add a battle to configure its questions.</p>
       )}
+    </section>
+  );
+}
+
+function KeysPanel({ project, updateProject }: { project: KitsuneProject; updateProject: (updater: (project: KitsuneProject) => KitsuneProject) => void }) {
+  const [selectedKeyId, setSelectedKeyId] = React.useState(project.keys[0]?.id ?? "");
+  const key = project.keys.find((candidate) => candidate.id === selectedKeyId) ?? project.keys[0];
+  const currentSprite = key?.spriteKey ? project.assets.sprites[key.spriteKey] : undefined;
+
+  React.useEffect(() => {
+    if (!key && project.keys[0]) setSelectedKeyId(project.keys[0].id);
+  }, [key, project.keys]);
+
+  function updateKey(updater: (key: KeyDefinition) => void) {
+    updateProject((draft) => {
+      const target = draft.keys.find((candidate) => candidate.id === key?.id);
+      if (target) updater(target);
+      return draft;
+    });
+  }
+
+  function addKey() {
+    const id = uniqueId("key", project.keys.map((candidate) => candidate.id));
+    updateProject((draft) => {
+      draft.keys.push({ id, name: "New Key" });
+      return draft;
+    });
+    setSelectedKeyId(id);
+  }
+
+  function renameKey(value: string) {
+    if (!key) return;
+    const nextId = slug(value);
+    if (nextId !== key.id && project.keys.some((candidate) => candidate.id === nextId)) return;
+    updateProject((draft) => {
+      const target = draft.keys.find((candidate) => candidate.id === key.id);
+      if (!target) return draft;
+      retargetKeyReferences(draft, key.id, nextId);
+      target.id = nextId;
+      return draft;
+    });
+    setSelectedKeyId(nextId);
+  }
+
+  function deleteKey() {
+    if (!key) return;
+    let nextId = "";
+    updateProject((draft) => {
+      const index = draft.keys.findIndex((candidate) => candidate.id === key.id);
+      removeKeyReferences(draft, key.id);
+      draft.keys = draft.keys.filter((candidate) => candidate.id !== key.id);
+      nextId = draft.keys[Math.min(index, draft.keys.length - 1)]?.id ?? "";
+      return draft;
+    });
+    setSelectedKeyId(nextId);
+  }
+
+  return (
+    <section className="content-panel">
+      <div className="panel-heading">
+        <h2>Keys</h2>
+        <button onClick={addKey}>Add Key</button>
+      </div>
+      {project.keys.length > 0 ? (
+        <>
+          <label>
+            Key
+            <select value={key?.id ?? ""} onChange={(event) => setSelectedKeyId(event.target.value)}>
+              {project.keys.map((candidate) => <option key={candidate.id} value={candidate.id}>{candidate.name}</option>)}
+            </select>
+          </label>
+          {key && (
+            <div className="focused-editor">
+              <label>Key ID<input value={key.id} onChange={(event) => renameKey(event.target.value)} /></label>
+              <label>Name<input value={key.name} onChange={(event) => updateKey((draft) => { draft.name = event.target.value; })} /></label>
+              <SpriteField
+                label="Key Sprite"
+                project={project}
+                currentSprite={currentSprite}
+                updateProject={updateProject}
+                setSpriteKey={(spriteKey) => updateKey((draft) => {
+                  if (spriteKey) draft.spriteKey = spriteKey;
+                  else delete draft.spriteKey;
+                })}
+              />
+              <button className="danger" onClick={deleteKey}>Delete Key</button>
+            </div>
+          )}
+        </>
+      ) : (
+        <p className="muted">Add a key to configure progression locks and rewards.</p>
+      )}
+    </section>
+  );
+}
+
+function KeyProgressionFields({
+  project,
+  rewardKeyIds,
+  lock,
+  update
+}: {
+  project: KitsuneProject;
+  rewardKeyIds: string[];
+  lock?: { keyId: string; missingKeyMessage: string };
+  update: (rewardKeyIds: string[], lock: { keyId: string; missingKeyMessage: string } | undefined) => void;
+}) {
+  const availableRewards = project.keys.filter((key) => !rewardKeyIds.includes(key.id));
+  const [rewardToAdd, setRewardToAdd] = React.useState(availableRewards[0]?.id ?? "");
+
+  React.useEffect(() => {
+    if (!availableRewards.some((key) => key.id === rewardToAdd)) {
+      setRewardToAdd(availableRewards[0]?.id ?? "");
+    }
+  }, [availableRewards, rewardToAdd]);
+
+  return (
+    <section className="key-progression">
+      <h3>Key Progression</h3>
+      <label>
+        Required Key
+        <select
+          value={lock?.keyId ?? ""}
+          onChange={(event) => update(rewardKeyIds, event.target.value ? {
+            keyId: event.target.value,
+            missingKeyMessage: lock?.missingKeyMessage ?? "This is locked."
+          } : undefined)}
+        >
+          <option value="">None</option>
+          {project.keys.map((key) => <option key={key.id} value={key.id}>{key.name}</option>)}
+        </select>
+      </label>
+      {lock && (
+        <label>
+          Missing-key Message
+          <textarea value={lock.missingKeyMessage} onChange={(event) => update(rewardKeyIds, { ...lock, missingKeyMessage: event.target.value })} />
+        </label>
+      )}
+      <section className="membership-list">
+        <h3>Reward Keys</h3>
+        {rewardKeyIds.length > 0 ? rewardKeyIds.map((keyId) => (
+          <div className="membership-row" key={keyId}>
+            <span>{project.keys.find((key) => key.id === keyId)?.name ?? keyId}</span>
+            <button onClick={() => update(rewardKeyIds.filter((candidate) => candidate !== keyId), lock)}>Remove</button>
+          </div>
+        )) : <p className="muted">No keys awarded.</p>}
+        {availableRewards.length > 0 && (
+          <div className="add-question-row">
+            <select value={rewardToAdd} onChange={(event) => setRewardToAdd(event.target.value)}>
+              {availableRewards.map((key) => <option key={key.id} value={key.id}>{key.name}</option>)}
+            </select>
+            <button onClick={() => update([...rewardKeyIds, rewardToAdd], lock)}>Add Reward</button>
+          </div>
+        )}
+      </section>
     </section>
   );
 }
@@ -1317,6 +1497,32 @@ function removeBattleReferences(project: KitsuneProject, battleId: string) {
     for (const entity of map.entities) {
       entity.event = removeBattleCommands(entity.event, battleId);
     }
+  }
+}
+
+function retargetKeyReferences(project: KitsuneProject, oldKeyId: string, nextKeyId: string) {
+  for (const map of project.maps) {
+    for (const entity of map.entities) {
+      entity.rewardKeyIds = (entity.rewardKeyIds ?? []).map((keyId) => keyId === oldKeyId ? nextKeyId : keyId);
+      if (entity.lock?.keyId === oldKeyId) entity.lock.keyId = nextKeyId;
+    }
+  }
+  for (const battle of project.battles) {
+    battle.rewardKeyIds = (battle.rewardKeyIds ?? []).map((keyId) => keyId === oldKeyId ? nextKeyId : keyId);
+    if (battle.lock?.keyId === oldKeyId) battle.lock.keyId = nextKeyId;
+  }
+}
+
+function removeKeyReferences(project: KitsuneProject, keyId: string) {
+  for (const map of project.maps) {
+    for (const entity of map.entities) {
+      entity.rewardKeyIds = (entity.rewardKeyIds ?? []).filter((candidate) => candidate !== keyId);
+      if (entity.lock?.keyId === keyId) delete entity.lock;
+    }
+  }
+  for (const battle of project.battles) {
+    battle.rewardKeyIds = (battle.rewardKeyIds ?? []).filter((candidate) => candidate !== keyId);
+    if (battle.lock?.keyId === keyId) delete battle.lock;
   }
 }
 

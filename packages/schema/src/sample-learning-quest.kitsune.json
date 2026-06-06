@@ -793,6 +793,9 @@
               "type": "grantKnowledge",
               "knowledgeId": "attention"
             }
+          ],
+          "rewardKeyIds": [
+            "annex-key"
           ]
         },
         {
@@ -824,6 +827,10 @@
             "y": 4
           },
           "spriteKey": "sprite-kenney-tiny-town-86",
+          "lock": {
+            "keyId": "annex-key",
+            "missingKeyMessage": "The annex door is locked. Find its key."
+          },
           "event": [
             {
               "type": "dialogue",
@@ -1280,6 +1287,13 @@
         "learning",
         "transfer"
       ]
+    }
+  ],
+  "keys": [
+    {
+      "id": "annex-key",
+      "name": "Annex Key",
+      "spriteKey": "sprite-kenney-tiny-town-86"
     }
   ],
   "battles": [
