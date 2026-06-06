@@ -14,7 +14,7 @@ export type ActiveBattle = {
   battleId: string;
   enemyName: string;
   playerHp: number;
-  enemyHp: number;
+  questionsRemaining: number;
   prompt: string;
   answer: string;
   knowledgeId: string;
@@ -23,17 +23,21 @@ export type ActiveBattle = {
 };
 
 export type SaveState = {
+  saveVersion: 1;
   projectId: string;
   projectVersion: string;
   mapId: string;
   player: Position;
   flags: Record<string, boolean>;
   diary: string[];
+  overlay: RuntimeOverlay;
+  battleQuestionQueue: string[];
   updatedAt: string;
 };
 
-export type RuntimeSnapshot = SaveState & {
-  overlay: RuntimeOverlay;
+export type LegacySaveState = Omit<SaveState, "saveVersion" | "overlay" | "battleQuestionQueue">;
+
+export type RuntimeSnapshot = Omit<SaveState, "battleQuestionQueue"> & {
   currentMap: KitsuneMap;
   diaryEntries: KnowledgeEntry[];
 };
@@ -41,24 +45,32 @@ export type RuntimeSnapshot = SaveState & {
 export class GameRuntime {
   private state: SaveState;
   private overlay: RuntimeOverlay = { type: "none" };
+  private battleQuestionQueue: string[] = [];
 
-  constructor(private readonly project: KitsuneProject, save?: SaveState) {
+  constructor(private readonly project: KitsuneProject, save?: SaveState | LegacySaveState) {
     const startMap = this.requireMap(project.start.mapId);
     const start = startMap.spawns[project.start.spawnId] ?? { x: 1, y: 1 };
-    this.state = save ?? {
+    const restored = save ? restoreSave(save) : undefined;
+    this.state = restored ?? {
+      saveVersion: 1,
       projectId: project.id,
       projectVersion: project.version,
       mapId: startMap.id,
       player: { ...start },
       flags: {},
       diary: [],
+      overlay: { type: "none" },
+      battleQuestionQueue: [],
       updatedAt: new Date().toISOString()
     };
+    this.overlay = structuredClone(this.state.overlay);
+    this.battleQuestionQueue = [...this.state.battleQuestionQueue];
   }
 
   snapshot(): RuntimeSnapshot {
+    const { battleQuestionQueue: _battleQuestionQueue, ...state } = this.state;
     return {
-      ...structuredClone(this.state),
+      ...structuredClone(state),
       overlay: structuredClone(this.overlay),
       currentMap: this.currentMap(),
       diaryEntries: this.state.diary.map((id) => this.requireKnowledge(id))
@@ -128,20 +140,12 @@ export class GameRuntime {
     const nextBattle: ActiveBattle = {
       ...battle,
       round: battle.round + 1,
-      enemyHp: correct ? Math.max(0, battle.enemyHp - 1) : battle.enemyHp,
+      questionsRemaining: Math.max(0, battle.questionsRemaining - 1),
       playerHp: correct ? battle.playerHp : Math.max(0, battle.playerHp - 1),
       result: correct ? "correct" : "incorrect"
     };
 
     const definition = this.requireBattle(battle.battleId);
-    if (nextBattle.enemyHp <= 0) {
-      this.state.flags[definition.victoryFlag] = true;
-      nextBattle.result = "victory";
-      this.overlay = { type: "dialogue", messages: [{ text: `Victory over ${definition.enemyName}.` }] };
-      this.touch();
-      return nextBattle;
-    }
-
     if (nextBattle.playerHp <= 0) {
       nextBattle.result = "defeat";
       this.overlay = { type: "dialogue", messages: [{ text: "Defeat. Review the diary and try again." }] };
@@ -149,7 +153,15 @@ export class GameRuntime {
       return nextBattle;
     }
 
-    const nextQuestion = this.pickQuestion(definition, nextBattle.round);
+    if (nextBattle.questionsRemaining <= 0) {
+      this.state.flags[definition.victoryFlag] = true;
+      nextBattle.result = "victory";
+      this.overlay = { type: "dialogue", messages: [{ text: `Victory over ${definition.enemyName}.` }] };
+      this.touch();
+      return nextBattle;
+    }
+
+    const nextQuestion = this.nextBattleQuestion();
     this.overlay = {
       type: "battle",
       battle: {
@@ -164,7 +176,11 @@ export class GameRuntime {
   }
 
   saveState(): SaveState {
-    return structuredClone(this.state);
+    return structuredClone({
+      ...this.state,
+      overlay: this.overlay,
+      battleQuestionQueue: this.battleQuestionQueue
+    });
   }
 
   private runEvent(commands: EventCommand[]) {
@@ -208,14 +224,15 @@ export class GameRuntime {
 
   private startBattle(battleId: string) {
     const battle = this.requireBattle(battleId);
-    const firstQuestion = this.pickQuestion(battle, 0);
+    this.battleQuestionQueue = shuffle(battle.requiredKnowledgeIds);
+    const firstQuestion = this.nextBattleQuestion();
     this.overlay = {
       type: "battle",
       battle: {
         battleId: battle.id,
         enemyName: battle.enemyName,
-        playerHp: battle.playerHp,
-        enemyHp: battle.enemyHp,
+        playerHp: this.project.player.maxHp,
+        questionsRemaining: battle.requiredKnowledgeIds.length,
         prompt: firstQuestion.prompt,
         answer: firstQuestion.answer,
         knowledgeId: firstQuestion.id,
@@ -225,13 +242,10 @@ export class GameRuntime {
     this.touch();
   }
 
-  private pickQuestion(battle: BattleDefinition, round: number): KnowledgeEntry {
-    const unlocked = battle.requiredKnowledgeIds
-      .filter((id) => this.state.diary.includes(id))
-      .map((id) => this.requireKnowledge(id));
-    const fallback = battle.requiredKnowledgeIds.map((id) => this.requireKnowledge(id));
-    const pool = unlocked.length > 0 ? unlocked : fallback;
-    return pool[round % pool.length];
+  private nextBattleQuestion(): KnowledgeEntry {
+    const knowledgeId = this.battleQuestionQueue.shift();
+    if (!knowledgeId) throw new Error("Battle has no remaining questions");
+    return this.requireKnowledge(knowledgeId);
   }
 
   private grantKnowledge(knowledgeId: string) {
@@ -274,6 +288,8 @@ export class GameRuntime {
   }
 
   private touch() {
+    this.state.overlay = structuredClone(this.overlay);
+    this.state.battleQuestionQueue = [...this.battleQuestionQueue];
     this.state.updatedAt = new Date().toISOString();
   }
 }
@@ -295,4 +311,25 @@ export function normalizeAnswer(answer: string): string {
 
 function tileNumber(tile: TileValue): number {
   return typeof tile === "number" ? tile : tile.tile;
+}
+
+function shuffle<T>(values: T[]): T[] {
+  const shuffled = [...values];
+  for (let index = shuffled.length - 1; index > 0; index -= 1) {
+    const swapIndex = Math.floor(Math.random() * (index + 1));
+    [shuffled[index], shuffled[swapIndex]] = [shuffled[swapIndex], shuffled[index]];
+  }
+  return shuffled;
+}
+
+function restoreSave(save: SaveState | LegacySaveState): SaveState {
+  if ("saveVersion" in save && save.saveVersion === 1) {
+    return structuredClone(save);
+  }
+  return {
+    ...structuredClone(save),
+    saveVersion: 1,
+    overlay: { type: "none" },
+    battleQuestionQueue: []
+  };
 }

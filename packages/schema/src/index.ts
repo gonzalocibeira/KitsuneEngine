@@ -106,9 +106,7 @@ export const battleSchema = z.object({
   name: z.string().min(1),
   enemyName: z.string().min(1),
   victoryFlag: z.string().min(1),
-  requiredKnowledgeIds: z.array(z.string().min(1)).min(1),
-  playerHp: z.number().int().positive().default(3),
-  enemyHp: z.number().int().positive().default(3)
+  requiredKnowledgeIds: z.array(z.string().min(1)).min(1)
 });
 
 export const tilesetAssetSchema = z.object({

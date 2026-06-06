@@ -331,7 +331,7 @@ label {
 }
 
 .tool-tabs {
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(2, 1fr);
 }
 
 .tab-strip {
@@ -377,9 +377,52 @@ label {
 .validation,
 .stack,
 .content-panel,
-.event-editor {
+.event-editor,
+.focused-editor,
+.question-list,
+.membership-list,
+.placement-controls {
   display: grid;
   gap: 0.7rem;
+}
+
+.panel-heading,
+.membership-row,
+.add-question-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.add-question-row select {
+  min-width: 0;
+  flex: 1;
+}
+
+.panel-heading {
+  justify-content: space-between;
+}
+
+.panel-heading h2,
+.question-list h3 {
+  margin: 0;
+}
+
+.membership-row {
+  border: 1px solid #3b4d46;
+  border-radius: 6px;
+  padding: 0.45rem;
+  background: #202b27;
+}
+
+.membership-row span {
+  min-width: 0;
+  flex: 1;
+  overflow-wrap: anywhere;
+}
+
+.membership-row button {
+  padding: 0.35rem 0.45rem;
 }
 
 .checkbox-list {
