@@ -11,45 +11,20 @@ async function move(page: import("@playwright/test").Page, key: string, times = 
   }
 }
 
-async function cellCenter(page: import("@playwright/test").Page, x: number, y: number) {
-  const box = await page.locator(`button.cell[title="${x}, ${y}"]`).boundingBox();
-  expect(box).toBeTruthy();
-  return { x: box!.x + box!.width / 2, y: box!.y + box!.height / 2 };
-}
-
 async function touchActions(page: import("@playwright/test").Page, actions: Array<"Up" | "Right" | "Down" | "Left" | "Act">) {
   for (const action of actions) {
     await page.locator(".touch-controls button").filter({ hasText: action }).evaluate((button: HTMLButtonElement) => button.click());
   }
 }
 
-test("Tamamo paints map tiles by dragging", async ({ page }) => {
+test("Tamamo paints a newly created map", async ({ page }) => {
   await page.goto("http://127.0.0.1:5173");
-  await page.getByRole("button", { name: "Empty" }).click();
+  await page.getByLabel("New map name").fill("Paint Test");
+  await page.getByRole("button", { name: "Create Map", exact: true }).click();
+  await page.getByLabel("Layer").selectOption("collision");
+  await page.getByRole("button", { name: "Kenney Tiny Town 1", exact: true }).click();
 
-  const first = await cellCenter(page, 0, 0);
-  const second = await cellCenter(page, 1, 0);
-  const third = await cellCenter(page, 2, 0);
-  const releaseCell = await cellCenter(page, 3, 0);
-  const untouchedAfterRelease = await cellCenter(page, 4, 0);
   const singleClick = page.locator('button.cell[title="5, 0"]');
-  const gridBox = await page.locator(".tile-grid").boundingBox();
-  expect(gridBox).toBeTruthy();
-  const outside = { x: gridBox!.x - 10, y: first.y };
-
-  await page.mouse.move(first.x, first.y);
-  await page.mouse.down();
-  await page.mouse.move(second.x, second.y);
-  await page.mouse.move(second.x + 2, second.y + 2);
-  await page.mouse.move(outside.x, outside.y);
-  await page.mouse.move(third.x, third.y);
-  await page.mouse.up();
-
-  await page.mouse.move(releaseCell.x, releaseCell.y);
-  await page.mouse.down();
-  await page.mouse.move(outside.x, outside.y);
-  await page.mouse.up();
-  await page.mouse.move(untouchedAfterRelease.x, untouchedAfterRelease.y);
   await singleClick.click();
 
   const downloadPromise = page.waitForEvent("download");
@@ -58,7 +33,37 @@ test("Tamamo paints map tiles by dragging", async ({ page }) => {
   const exportedPath = await download.path();
   expect(exportedPath).toBeTruthy();
   const exported = JSON.parse(await readFile(exportedPath!, "utf8"));
-  expect(exported.maps[0].layers.ground.tiles[0].slice(0, 7)).toEqual([0, 0, 0, 0, 1, 0, 1]);
+  expect(exported.maps[0].layers.collision.tiles[0].slice(0, 7)).toEqual([0, 0, 0, 0, 0, 1, 0]);
+});
+
+test("Tamamo starts empty and manages maps", async ({ page }) => {
+  await page.goto("http://127.0.0.1:5173");
+
+  await expect(page.getByRole("heading", { name: "No maps exist yet" })).toBeVisible();
+  await expect(page.getByText("Create a map to begin building your game world.")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Paint" })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Spawn" })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Place on Map" })).toBeDisabled();
+
+  await page.getByLabel("New map name").fill("Village");
+  await page.getByRole("button", { name: "Create Map", exact: true }).click();
+  await expect(page.getByLabel("Map selection")).toHaveValue("map-1");
+  await expect(page.locator(".tile-grid")).toBeVisible();
+
+  await page.getByLabel("New map name").fill("Village");
+  await page.getByRole("button", { name: "Create Map", exact: true }).click();
+  await expect(page.getByText('A map named "Village" already exists.')).toBeVisible();
+  await expect(page.getByLabel("Map selection").locator("option")).toHaveCount(1);
+
+  await page.getByLabel("Rename Map").fill("Town Square");
+  await page.getByRole("button", { name: "Rename Map" }).click();
+  await expect(page.getByLabel("Map selection").locator("option")).toHaveText(["Town Square"]);
+
+  await page.getByRole("button", { name: "Delete Map" }).click();
+  const confirmation = page.getByRole("dialog", { name: "Delete map?" });
+  await expect(confirmation).toBeVisible();
+  await confirmation.getByRole("button", { name: "Delete Map" }).click();
+  await expect(page.getByRole("heading", { name: "No maps exist yet" })).toBeVisible();
 });
 
 test("Tamamo confirms before replacing the project with sample content", async ({ page }) => {
@@ -84,6 +89,8 @@ test("Tamamo confirms before replacing the project with sample content", async (
 
 test("Tamamo export loads and plays in Kuzunoha", async ({ page }) => {
   await page.goto("http://127.0.0.1:5173");
+  await page.getByRole("button", { name: "Sample", exact: true }).click();
+  await page.getByRole("dialog", { name: "Load sample content?" }).getByRole("button", { name: "Load Sample" }).click();
   await expect(page.getByText("Project is export-ready.")).toBeVisible();
   const editorTabs = page.getByLabel("Editor sections");
   await expect(editorTabs.getByRole("button", { name: "Entity" })).toBeVisible();
@@ -188,7 +195,7 @@ test("Tamamo export loads and plays in Kuzunoha", async ({ page }) => {
   await page.goto("http://127.0.0.1:5174");
   await page.evaluate(() => localStorage.clear());
   await page.locator('input[type="file"]').setInputFiles(exportedPath!);
-  await expect(page.locator("canvas")).toBeVisible();
+  await expect(page.getByLabel("World status")).toBeVisible();
   await expect(page.locator(".touch-controls")).toBeHidden();
 
   await page.locator(".touch-controls button").filter({ hasText: "Up" }).evaluate((button: HTMLButtonElement) => button.click());

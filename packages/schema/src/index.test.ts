@@ -12,6 +12,17 @@ describe("KitsuneProject schema", () => {
     }
   });
 
+  it("accepts an empty authoring project", () => {
+    const empty = structuredClone(sampleProject);
+    empty.start = { mapId: "", spawnId: "" };
+    empty.maps = [];
+    empty.knowledge = [];
+    empty.battles = [];
+    empty.keys = [];
+
+    expect(validateProject(empty).ok).toBe(true);
+  });
+
   it("defaults player config for older projects", () => {
     const legacy = structuredClone(sampleProject);
     delete (legacy as Partial<typeof sampleProject>).player;
@@ -73,6 +84,17 @@ describe("KitsuneProject schema", () => {
 
     expect(result.ok).toBe(false);
     expect(result.issues.join("\n")).toContain("missing");
+  });
+
+  it("reports duplicate map ids and names", () => {
+    const broken = structuredClone(sampleProject);
+    broken.maps.push({ ...structuredClone(broken.maps[0]), name: broken.maps[0].name.toUpperCase() });
+
+    const result = validateProject(broken);
+
+    expect(result.ok).toBe(false);
+    expect(result.issues.join("\n")).toContain("duplicate ids");
+    expect(result.issues.join("\n")).toContain("duplicate names");
   });
 
   it("reports missing asset references", () => {

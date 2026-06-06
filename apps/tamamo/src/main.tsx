@@ -2,6 +2,7 @@ import React from "react";
 import { createRoot } from "react-dom/client";
 import { sampleProject } from "@kitsune/schema/sampleProject";
 import {
+  createEmptyLayer,
   serializeProject,
   validateProject,
   type BattleDefinition,
@@ -24,6 +25,8 @@ type EditorLayer = "ground" | "decor" | "collision";
 type ToolMode = "paint" | "spawn";
 type RightPanelTab = "entities" | "knowledge" | "battles" | "keys" | "player";
 const mapLayerKeys: EditorLayer[] = ["ground", "decor", "collision"];
+const defaultMapWidth = 12;
+const defaultMapHeight = 8;
 const rightPanelTabs: Array<{ id: RightPanelTab; label: string }> = [
   { id: "entities", label: "Entity" },
   { id: "knowledge", label: "Notes" },
@@ -33,36 +36,43 @@ const rightPanelTabs: Array<{ id: RightPanelTab; label: string }> = [
 ];
 
 function App() {
-  const [project, setProject] = React.useState<KitsuneProject>(sampleProject);
-  const [selectedMapId, setSelectedMapId] = React.useState(sampleProject.start.mapId);
+  const [project, setProject] = React.useState<KitsuneProject>(createEmptyProject);
+  const [selectedMapId, setSelectedMapId] = React.useState("");
   const [layer, setLayer] = React.useState<EditorLayer>("ground");
   const [tileValue, setTileValue] = React.useState(1);
-  const [brushTilesetKey, setBrushTilesetKey] = React.useState(sampleProject.maps[0].tilesetKey ?? Object.keys(sampleProject.assets.tilesets)[0] ?? "");
+  const [brushTilesetKey, setBrushTilesetKey] = React.useState(Object.keys(sampleProject.assets.tilesets)[0] ?? "");
   const [mode, setMode] = React.useState<ToolMode>("paint");
   const [entityKind, setEntityKind] = React.useState<Entity["kind"]>("object");
   const [entityPlacementArmed, setEntityPlacementArmed] = React.useState(false);
-  const [selectedEntityId, setSelectedEntityId] = React.useState(sampleProject.maps[0].entities[0]?.id ?? "");
-  const [selectedSpawnId, setSelectedSpawnId] = React.useState(sampleProject.start.spawnId);
+  const [selectedEntityId, setSelectedEntityId] = React.useState("");
+  const [selectedSpawnId, setSelectedSpawnId] = React.useState("");
   const [rightTab, setRightTab] = React.useState<RightPanelTab>("entities");
-  const [notice, setNotice] = React.useState("Sample quest loaded.");
+  const [notice, setNotice] = React.useState("Empty project ready.");
   const [sampleConfirmationOpen, setSampleConfirmationOpen] = React.useState(false);
+  const [mapToDeleteId, setMapToDeleteId] = React.useState("");
+  const [newMapName, setNewMapName] = React.useState("");
+  const [mapNameDraft, setMapNameDraft] = React.useState("");
   const paintingRef = React.useRef(false);
   const lastPaintedCellRef = React.useRef("");
 
   const selectedMap = project.maps.find((map) => map.id === selectedMapId) ?? project.maps[0];
-  const spawnIds = Object.keys(selectedMap.spawns);
+  const spawnIds = Object.keys(selectedMap?.spawns ?? {});
   const tilesetOptions = Object.values(project.assets.tilesets);
-  const fallbackTileset = tilesetForMap(project, selectedMap);
+  const fallbackTileset = selectedMap ? tilesetForMap(project, selectedMap) : tilesetOptions[0];
   const brushTileset = project.assets.tilesets[brushTilesetKey] ?? fallbackTileset;
   const tilePalette = tilePaletteValues(brushTileset);
-  const selectedEntity = selectedMap.entities.find((entity) => entity.id === selectedEntityId);
-  const selectedSpawn = selectedMap.spawns[selectedSpawnId];
+  const selectedEntity = selectedMap?.entities.find((entity) => entity.id === selectedEntityId);
+  const selectedSpawn = selectedMap?.spawns[selectedSpawnId];
   const validation = validateProject(project);
 
   React.useEffect(() => {
-    if (selectedSpawnId && selectedMap.spawns[selectedSpawnId]) return;
+    if (!selectedMap || (selectedSpawnId && selectedMap.spawns[selectedSpawnId])) return;
     setSelectedSpawnId(spawnIds[0] ?? "");
-  }, [selectedMap.id, spawnIds.join("\0"), selectedSpawnId]);
+  }, [selectedMap?.id, spawnIds.join("\0"), selectedSpawnId]);
+
+  React.useEffect(() => {
+    setMapNameDraft(selectedMap?.name ?? "");
+  }, [selectedMap?.id, selectedMap?.name]);
 
   React.useEffect(() => {
     function stopPainting() {
@@ -85,6 +95,7 @@ function App() {
   }
 
   function updateSelectedMap(updater: (map: KitsuneMap) => void) {
+    if (!selectedMap) return;
     updateProject((draft) => {
       const map = draft.maps.find((candidate) => candidate.id === selectedMap.id);
       if (map) updater(map);
@@ -100,6 +111,7 @@ function App() {
   }
 
   function resizeSelectedMap(nextWidth: number, nextHeight: number) {
+    if (!selectedMap) return;
     const width = clampMapDimension(nextWidth);
     const height = clampMapDimension(nextHeight);
     const selectedEntityWillRemain = !selectedEntity || isInBounds(selectedEntity.position, width, height);
@@ -139,6 +151,7 @@ function App() {
   }
 
   function paintCell(x: number, y: number) {
+    if (!selectedMap) return;
     if (!isInBounds({ x, y }, selectedMap.width, selectedMap.height)) return;
     updateSelectedMap((map) => {
       map.layers[layer].tiles[y][x] = paintedTileValue(layer, brushTileset, tileValue);
@@ -157,6 +170,7 @@ function App() {
   }
 
   function onCellClick(x: number, y: number) {
+    if (!selectedMap) return;
     if (entityPlacementArmed) {
       const id = `${entityKind}-${Date.now().toString(36)}`;
       const entity: Entity = {
@@ -204,6 +218,74 @@ function App() {
     setSelectedMapId(mapId);
     setSelectedSpawnId(Object.keys(nextMap?.spawns ?? {})[0] ?? "");
     setBrushTilesetKey(nextMap?.tilesetKey ?? Object.keys(project.assets.tilesets)[0] ?? "");
+    setSelectedEntityId(nextMap?.entities[0]?.id ?? "");
+  }
+
+  function createMap() {
+    const name = newMapName.trim();
+    if (!name) {
+      setNotice("Map name cannot be empty.");
+      return;
+    }
+    if (hasMapName(project, name)) {
+      setNotice(`A map named "${name}" already exists.`);
+      return;
+    }
+
+    const id = uniqueId("map", project.maps.map((map) => map.id));
+    const map = createMapDefinition(id, name, Object.keys(project.assets.tilesets)[0]);
+    updateProject((draft) => {
+      draft.maps.push(map);
+      if (!draft.start.mapId) {
+        draft.start = { mapId: id, spawnId: "start" };
+      }
+      return draft;
+    });
+    setSelectedMapId(id);
+    setSelectedSpawnId("start");
+    setSelectedEntityId("");
+    setNewMapName("");
+    setNotice(`Map "${name}" created.`);
+  }
+
+  function renameSelectedMap() {
+    if (!selectedMap) return;
+    const name = mapNameDraft.trim();
+    if (!name) {
+      setMapNameDraft(selectedMap.name);
+      setNotice("Map name cannot be empty.");
+      return;
+    }
+    if (hasMapName(project, name, selectedMap.id)) {
+      setMapNameDraft(selectedMap.name);
+      setNotice(`A map named "${name}" already exists.`);
+      return;
+    }
+    updateSelectedMap((map) => {
+      map.name = name;
+    });
+    setNotice(`Map renamed to "${name}".`);
+  }
+
+  function deleteMap(mapId: string) {
+    const deletedMap = project.maps.find((map) => map.id === mapId);
+    if (!deletedMap) return;
+    const nextMap = project.maps.find((map) => map.id !== mapId);
+    updateProject((draft) => {
+      draft.maps = draft.maps.filter((map) => map.id !== mapId);
+      removeMapReferences(draft, mapId);
+      if (draft.start.mapId === mapId || !draft.start.mapId) {
+        draft.start = nextMap
+          ? { mapId: nextMap.id, spawnId: Object.keys(nextMap.spawns)[0] ?? "" }
+          : { mapId: "", spawnId: "" };
+      }
+      return draft;
+    });
+    setSelectedMapId(nextMap?.id ?? "");
+    setSelectedSpawnId(nextMap ? Object.keys(nextMap.spawns)[0] ?? "" : "");
+    setSelectedEntityId("");
+    setMapToDeleteId("");
+    setNotice(`Map "${deletedMap.name}" deleted.`);
   }
 
   function loadSample() {
@@ -239,7 +321,7 @@ function App() {
       setProject(result.project);
       setSelectedMapId(result.project.start.mapId);
       setSelectedSpawnId(result.project.start.spawnId);
-      setSelectedEntityId(result.project.maps[0].entities[0]?.id ?? "");
+      setSelectedEntityId(result.project.maps[0]?.entities[0]?.id ?? "");
       setNotice(successMessage);
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "Could not parse JSON.");
@@ -323,7 +405,8 @@ function App() {
           </label>
           <label>
             Map
-            <select value={selectedMap.id} onChange={(event) => selectMap(event.target.value)}>
+            <select aria-label="Map selection" value={selectedMap?.id ?? ""} onChange={(event) => selectMap(event.target.value)} disabled={!selectedMap}>
+              {!selectedMap && <option value="">No maps</option>}
               {project.maps.map((map) => (
                 <option key={map.id} value={map.id}>
                   {map.name}
@@ -331,11 +414,40 @@ function App() {
               ))}
             </select>
           </label>
-          <label>
-            Map Name
-            <input value={selectedMap.name} onChange={(event) => updateSelectedMap((map) => { map.name = event.target.value; })} />
-          </label>
-          <div className="map-size-row">
+          <section className="map-manager">
+            <h3>Map Manager</h3>
+            <label>
+              New Map Name
+              <input
+                aria-label="New map name"
+                value={newMapName}
+                onChange={(event) => setNewMapName(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") createMap();
+                }}
+              />
+            </label>
+            <button onClick={createMap}>Create Map</button>
+            {selectedMap && (
+              <>
+                <label>
+                  Rename Map
+                  <input
+                    value={mapNameDraft}
+                    onChange={(event) => setMapNameDraft(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") renameSelectedMap();
+                    }}
+                  />
+                </label>
+                <div className="button-row">
+                  <button onClick={renameSelectedMap}>Rename Map</button>
+                  <button className="danger" onClick={() => setMapToDeleteId(selectedMap.id)}>Delete Map</button>
+                </div>
+              </>
+            )}
+          </section>
+          {selectedMap && <div className="map-size-row">
             <label>
               Width
               <input
@@ -356,18 +468,18 @@ function App() {
                 onChange={(event) => resizeSelectedMap(selectedMap.width, Number(event.target.value))}
               />
             </label>
-          </div>
+          </div>}
 
           <div className="segmented tool-tabs">
-            <button className={mode === "paint" && !entityPlacementArmed ? "active" : ""} onClick={() => { setMode("paint"); setEntityPlacementArmed(false); }}>
+            <button disabled={!selectedMap} className={mode === "paint" && !entityPlacementArmed ? "active" : ""} onClick={() => { setMode("paint"); setEntityPlacementArmed(false); }}>
               Paint
             </button>
-            <button className={mode === "spawn" && !entityPlacementArmed ? "active" : ""} onClick={() => { setMode("spawn"); setEntityPlacementArmed(false); }}>
+            <button disabled={!selectedMap} className={mode === "spawn" && !entityPlacementArmed ? "active" : ""} onClick={() => { setMode("spawn"); setEntityPlacementArmed(false); }}>
               Spawn
             </button>
           </div>
 
-          {mode === "paint" && (
+          {selectedMap && mode === "paint" && (
             <>
               <label>
                 Layer
@@ -410,7 +522,7 @@ function App() {
             </>
           )}
 
-          {mode === "spawn" && (
+          {selectedMap && mode === "spawn" && (
             <SpawnPanel
               map={selectedMap}
               project={project}
@@ -425,7 +537,7 @@ function App() {
         </aside>
 
         <section className="map-stage" aria-label="Tile map editor">
-          <div className="tile-grid" style={{ gridTemplateColumns: `repeat(${selectedMap.width}, 34px)` }}>
+          {selectedMap ? <div className="tile-grid" style={{ gridTemplateColumns: `repeat(${selectedMap.width}, 34px)` }}>
             {selectedMap.layers.ground.tiles.map((row, y) =>
               row.map((groundTile, x) => {
                 const decorTile = selectedMap.layers.decor.tiles[y][x];
@@ -479,7 +591,15 @@ function App() {
                 );
               })
             )}
-          </div>
+          </div> : (
+            <section className="map-empty-state">
+              <h2>No maps exist yet</h2>
+              <p>Create a map to begin building your game world.</p>
+              <button className="primary" onClick={() => document.querySelector<HTMLInputElement>('input[aria-label="New map name"]')?.focus()}>
+                Create Your First Map
+              </button>
+            </section>
+          )}
         </section>
 
         <aside className="panel right-panel">
@@ -497,7 +617,7 @@ function App() {
               </button>
             ))}
           </nav>
-          {rightTab === "entities" && (
+          {rightTab === "entities" && selectedMap && (
             <EntityPanel
               entity={selectedEntity}
               project={project}
@@ -516,6 +636,13 @@ function App() {
                 setSelectedEntityId("");
               }}
             />
+          )}
+          {rightTab === "entities" && !selectedMap && (
+            <section className="content-panel map-tools-empty">
+              <h2>Entities</h2>
+              <p className="muted">Create or select a map before placing entities.</p>
+              <button disabled>Place on Map</button>
+            </section>
           )}
           {rightTab === "knowledge" && <KnowledgePanel project={project} updateProject={updateProject} />}
           {rightTab === "battles" && <BattlesPanel project={project} updateProject={updateProject} />}
@@ -536,6 +663,17 @@ function App() {
         >
           <p>This action may replace your current project data. Any unsaved changes will be lost.</p>
           <p>Do you want to continue?</p>
+        </ConfirmationDialog>
+      )}
+      {mapToDeleteId && (
+        <ConfirmationDialog
+          title="Delete map?"
+          confirmLabel="Delete Map"
+          onCancel={() => setMapToDeleteId("")}
+          onConfirm={() => deleteMap(mapToDeleteId)}
+        >
+          <p>This permanently deletes "{project.maps.find((map) => map.id === mapToDeleteId)?.name}".</p>
+          <p>Entities and events on this map will also be deleted.</p>
         </ConfirmationDialog>
       )}
     </main>
@@ -1484,10 +1622,55 @@ function PlayerPanel({ project, updateProject }: { project: KitsuneProject; upda
 }
 
 function defaultEvent(kind: Entity["kind"], project: KitsuneProject): EventCommand[] {
-  if (kind === "door") return [{ type: "transferMap", mapId: project.start.mapId, spawnId: project.start.spawnId }];
-  if (kind === "trigger") return [{ type: "startBattle", battleId: project.battles[0]?.id ?? "" }];
-  if (kind === "object") return [{ type: "grantKnowledge", knowledgeId: project.knowledge[0]?.id ?? "" }];
+  if (kind === "door" && project.start.mapId && project.start.spawnId) {
+    return [{ type: "transferMap", mapId: project.start.mapId, spawnId: project.start.spawnId }];
+  }
+  if (kind === "trigger" && project.battles[0]) return [{ type: "startBattle", battleId: project.battles[0].id }];
+  if (kind === "object" && project.knowledge[0]) return [{ type: "grantKnowledge", knowledgeId: project.knowledge[0].id }];
+  if (kind !== "npc") return [];
   return [{ type: "dialogue", speaker: "NPC", text: "New dialogue." }];
+}
+
+function createEmptyProject(): KitsuneProject {
+  return {
+    schemaVersion: sampleProject.schemaVersion,
+    id: "untitled-project",
+    title: "Untitled Project",
+    version: "0.1.0",
+    assets: {
+      tilesets: structuredClone(sampleProject.assets.tilesets),
+      sprites: {}
+    },
+    player: { name: "Hero", maxHp: 3 },
+    start: { mapId: "", spawnId: "" },
+    maps: [],
+    knowledge: [],
+    battles: [],
+    keys: []
+  };
+}
+
+function createMapDefinition(id: string, name: string, tilesetKey: string | undefined): KitsuneMap {
+  return {
+    id,
+    name,
+    width: defaultMapWidth,
+    height: defaultMapHeight,
+    tileSize: 16,
+    ...(tilesetKey ? { tilesetKey } : {}),
+    layers: {
+      ground: createEmptyLayer("ground", "Ground", defaultMapWidth, defaultMapHeight),
+      decor: createEmptyLayer("decor", "Decor", defaultMapWidth, defaultMapHeight),
+      collision: createEmptyLayer("collision", "Collision", defaultMapWidth, defaultMapHeight)
+    },
+    spawns: { start: { x: 0, y: 0 } },
+    entities: []
+  };
+}
+
+function hasMapName(project: KitsuneProject, name: string, exceptMapId?: string): boolean {
+  const normalized = name.trim().toLocaleLowerCase();
+  return project.maps.some((map) => map.id !== exceptMapId && map.name.trim().toLocaleLowerCase() === normalized);
 }
 
 function setOptionalString<T extends object, K extends keyof T>(target: T, key: K, value: string) {
@@ -1566,6 +1749,28 @@ function removeBattleReferences(project: KitsuneProject, battleId: string) {
       entity.event = removeBattleCommands(entity.event, battleId);
     }
   }
+}
+
+function removeMapReferences(project: KitsuneProject, mapId: string) {
+  for (const map of project.maps) {
+    for (const entity of map.entities) {
+      entity.event = removeMapCommands(entity.event, mapId);
+    }
+  }
+}
+
+function removeMapCommands(commands: EventCommand[], mapId: string): EventCommand[] {
+  return commands.flatMap((command) => {
+    if (command.type === "transferMap" && command.mapId === mapId) return [] as EventCommand[];
+    if (command.type === "branch") {
+      return [{
+        ...command,
+        then: removeMapCommands(command.then, mapId),
+        else: removeMapCommands(command.else ?? [], mapId)
+      }];
+    }
+    return [command];
+  });
 }
 
 function retargetKeyReferences(project: KitsuneProject, oldKeyId: string, nextKeyId: string) {

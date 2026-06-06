@@ -165,11 +165,11 @@ export const kitsuneProjectSchema = z.object({
   assets: assetManifestSchema,
   player: playerSchema.default({ name: "Hero", maxHp: 3 }),
   start: z.object({
-    mapId: z.string().min(1),
-    spawnId: z.string().min(1)
+    mapId: z.string(),
+    spawnId: z.string()
   }),
-  maps: z.array(mapSchema).min(1),
-  knowledge: z.array(knowledgeSchema).min(1),
+  maps: z.array(mapSchema),
+  knowledge: z.array(knowledgeSchema),
   battles: z.array(battleSchema).default([]),
   keys: z.array(keyDefinitionSchema).default([])
 });
@@ -217,6 +217,14 @@ export function validateReferences(project: KitsuneProject): string[] {
   const tilesetKeys = new Set(Object.keys(project.assets.tilesets));
   const spriteKeys = new Set(Object.keys(project.assets.sprites));
 
+  if (mapIds.size !== project.maps.length) {
+    issues.push("maps contain duplicate ids");
+  }
+  const mapNames = new Set(project.maps.map((map) => map.name.trim().toLocaleLowerCase()));
+  if (mapNames.size !== project.maps.length) {
+    issues.push("maps contain duplicate names");
+  }
+
   if (project.player.spriteKey && !spriteKeys.has(project.player.spriteKey)) {
     issues.push(`player.spriteKey references missing sprite "${project.player.spriteKey}"`);
   }
@@ -230,7 +238,7 @@ export function validateReferences(project: KitsuneProject): string[] {
     }
   }
 
-  if (!mapIds.has(project.start.mapId)) {
+  if (mapIds.size > 0 && !mapIds.has(project.start.mapId)) {
     issues.push(`start.mapId references missing map "${project.start.mapId}"`);
   }
 

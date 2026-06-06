@@ -86,13 +86,17 @@ function App() {
   }, [paused, refresh]);
 
   function loadProject(project: KitsuneProject, save?: SaveState | Version1SaveState | LegacySaveState) {
-    const runtime = new GameRuntime(project, save);
-    setHandle({ runtime, project });
-    setSnapshot(runtime.snapshot());
-    setPaused(false);
-    setConfirmTitle(false);
-    setSaveNotice("");
-    setError("");
+    try {
+      const runtime = new GameRuntime(project, save);
+      setHandle({ runtime, project });
+      setSnapshot(runtime.snapshot());
+      setPaused(false);
+      setConfirmTitle(false);
+      setSaveNotice("");
+      setError("");
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Could not play this project.");
+    }
   }
 
   function closeOverlay() {
