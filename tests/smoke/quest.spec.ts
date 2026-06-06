@@ -11,6 +11,50 @@ async function move(page: import("@playwright/test").Page, key: string, times = 
   }
 }
 
+async function cellCenter(page: import("@playwright/test").Page, x: number, y: number) {
+  const box = await page.locator(`button.cell[title="${x}, ${y}"]`).boundingBox();
+  expect(box).toBeTruthy();
+  return { x: box!.x + box!.width / 2, y: box!.y + box!.height / 2 };
+}
+
+test("Tamamo paints map tiles by dragging", async ({ page }) => {
+  await page.goto("http://127.0.0.1:5173");
+  await page.getByRole("button", { name: "Empty" }).click();
+
+  const first = await cellCenter(page, 0, 0);
+  const second = await cellCenter(page, 1, 0);
+  const third = await cellCenter(page, 2, 0);
+  const releaseCell = await cellCenter(page, 3, 0);
+  const untouchedAfterRelease = await cellCenter(page, 4, 0);
+  const singleClick = page.locator('button.cell[title="5, 0"]');
+  const gridBox = await page.locator(".tile-grid").boundingBox();
+  expect(gridBox).toBeTruthy();
+  const outside = { x: gridBox!.x - 10, y: first.y };
+
+  await page.mouse.move(first.x, first.y);
+  await page.mouse.down();
+  await page.mouse.move(second.x, second.y);
+  await page.mouse.move(second.x + 2, second.y + 2);
+  await page.mouse.move(outside.x, outside.y);
+  await page.mouse.move(third.x, third.y);
+  await page.mouse.up();
+
+  await page.mouse.move(releaseCell.x, releaseCell.y);
+  await page.mouse.down();
+  await page.mouse.move(outside.x, outside.y);
+  await page.mouse.up();
+  await page.mouse.move(untouchedAfterRelease.x, untouchedAfterRelease.y);
+  await singleClick.click();
+
+  const downloadPromise = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Export JSON" }).click();
+  const download = await downloadPromise;
+  const exportedPath = await download.path();
+  expect(exportedPath).toBeTruthy();
+  const exported = JSON.parse(await readFile(exportedPath!, "utf8"));
+  expect(exported.maps[0].layers.ground.tiles[0].slice(0, 7)).toEqual([0, 0, 0, 0, 1, 0, 1]);
+});
+
 test("Tamamo export loads and plays in Kuzunoha", async ({ page }) => {
   await page.goto("http://127.0.0.1:5173");
   await expect(page.getByText("Project is export-ready.")).toBeVisible();
