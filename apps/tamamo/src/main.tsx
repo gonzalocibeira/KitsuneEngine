@@ -20,6 +20,7 @@ const entityKinds: Entity["kind"][] = ["npc", "object", "door", "trigger"];
 
 type EditorLayer = "ground" | "decor" | "collision";
 type ToolMode = "paint" | "entity";
+const mapLayerKeys: EditorLayer[] = ["ground", "decor", "collision"];
 
 function App() {
   const [project, setProject] = React.useState<KitsuneProject>(sampleProject);
@@ -57,6 +58,42 @@ function App() {
       const entity = map.entities.find((candidate) => candidate.id === selectedEntityId);
       if (entity) updater(entity);
     });
+  }
+
+  function resizeSelectedMap(nextWidth: number, nextHeight: number) {
+    const width = clampMapDimension(nextWidth);
+    const height = clampMapDimension(nextHeight);
+    const selectedEntityWillRemain = !selectedEntity || isInBounds(selectedEntity.position, width, height);
+
+    updateProject((draft) => {
+      const map = draft.maps.find((candidate) => candidate.id === selectedMap.id);
+      if (!map) return draft;
+
+      map.width = width;
+      map.height = height;
+
+      for (const layerKey of mapLayerKeys) {
+        map.layers[layerKey].tiles = resizeTiles(
+          map.layers[layerKey].tiles,
+          width,
+          height,
+          layerKey === "ground" ? 1 : 0
+        );
+      }
+
+      map.entities = map.entities.filter((entity) => isInBounds(entity.position, width, height));
+      map.spawns = Object.fromEntries(Object.entries(map.spawns).filter(([, spawn]) => isInBounds(spawn, width, height)));
+
+      if (draft.start.mapId === map.id && !map.spawns[draft.start.spawnId]) {
+        map.spawns[draft.start.spawnId] = { x: 0, y: 0 };
+      }
+
+      return draft;
+    });
+
+    if (!selectedEntityWillRemain) {
+      setSelectedEntityId("");
+    }
   }
 
   function onCellClick(x: number, y: number) {
@@ -205,6 +242,28 @@ function App() {
               ))}
             </select>
           </label>
+          <div className="map-size-row">
+            <label>
+              Width
+              <input
+                type="number"
+                min="1"
+                step="1"
+                value={selectedMap.width}
+                onChange={(event) => resizeSelectedMap(Number(event.target.value), selectedMap.height)}
+              />
+            </label>
+            <label>
+              Height
+              <input
+                type="number"
+                min="1"
+                step="1"
+                value={selectedMap.height}
+                onChange={(event) => resizeSelectedMap(selectedMap.width, Number(event.target.value))}
+              />
+            </label>
+          </div>
 
           <div className="segmented">
             <button className={mode === "paint" ? "active" : ""} onClick={() => setMode("paint")}>
@@ -610,6 +669,20 @@ function defaultEvent(kind: Entity["kind"], project: KitsuneProject): EventComma
 
 function slug(value: string): string {
   return value.toLowerCase().replace(/[^a-z0-9-]+/g, "-").replace(/^-|-$/g, "") || "project";
+}
+
+function clampMapDimension(value: number): number {
+  return Math.max(1, Math.floor(Number.isFinite(value) ? value : 1));
+}
+
+function resizeTiles(tiles: TileValue[][], width: number, height: number, fill: TileValue): TileValue[][] {
+  return Array.from({ length: height }, (_, y) =>
+    Array.from({ length: width }, (_, x) => tiles[y]?.[x] ?? fill)
+  );
+}
+
+function isInBounds(position: { x: number; y: number }, width: number, height: number): boolean {
+  return position.x >= 0 && position.y >= 0 && position.x < width && position.y < height;
 }
 
 function tilesetForMap(project: KitsuneProject, map: KitsuneMap): TilesetAsset | undefined {
