@@ -4,6 +4,7 @@ import { sampleProject } from "@kitsune/schema/sampleProject";
 import {
   serializeProject,
   validateProject,
+  type BattleDefinition,
   type Entity,
   type EventCommand,
   type KitsuneMap,
@@ -19,8 +20,15 @@ const draftKey = "tamamo:draft";
 const entityKinds: Entity["kind"][] = ["npc", "object", "door", "trigger"];
 
 type EditorLayer = "ground" | "decor" | "collision";
-type ToolMode = "paint" | "entity";
+type ToolMode = "paint" | "entity" | "spawn";
+type RightPanelTab = "entities" | "knowledge" | "battles" | "player";
 const mapLayerKeys: EditorLayer[] = ["ground", "decor", "collision"];
+const rightPanelTabs: Array<{ id: RightPanelTab; label: string }> = [
+  { id: "entities", label: "Entities" },
+  { id: "knowledge", label: "Knowledge" },
+  { id: "battles", label: "Battles" },
+  { id: "player", label: "Player" }
+];
 
 function App() {
   const [project, setProject] = React.useState<KitsuneProject>(sampleProject);
@@ -31,21 +39,30 @@ function App() {
   const [mode, setMode] = React.useState<ToolMode>("paint");
   const [entityKind, setEntityKind] = React.useState<Entity["kind"]>("object");
   const [selectedEntityId, setSelectedEntityId] = React.useState(sampleProject.maps[0].entities[0]?.id ?? "");
+  const [selectedSpawnId, setSelectedSpawnId] = React.useState(sampleProject.start.spawnId);
+  const [rightTab, setRightTab] = React.useState<RightPanelTab>("entities");
   const [notice, setNotice] = React.useState("Sample quest loaded.");
 
   const selectedMap = project.maps.find((map) => map.id === selectedMapId) ?? project.maps[0];
+  const spawnIds = Object.keys(selectedMap.spawns);
   const tilesetOptions = Object.values(project.assets.tilesets);
   const fallbackTileset = tilesetForMap(project, selectedMap);
   const brushTileset = project.assets.tilesets[brushTilesetKey] ?? fallbackTileset;
   const tilePalette = tilePaletteValues(brushTileset);
   const selectedEntity = selectedMap.entities.find((entity) => entity.id === selectedEntityId);
+  const selectedSpawn = selectedMap.spawns[selectedSpawnId];
   const validation = validateProject(project);
+
+  React.useEffect(() => {
+    if (selectedSpawnId && selectedMap.spawns[selectedSpawnId]) return;
+    setSelectedSpawnId(spawnIds[0] ?? "");
+  }, [selectedMap.id, spawnIds.join("\0"), selectedSpawnId]);
 
   function updateProject(updater: (project: KitsuneProject) => KitsuneProject) {
     setProject((current) => updater(structuredClone(current)));
   }
 
-  function updateSelectedMap(updater: (map: typeof selectedMap) => void) {
+  function updateSelectedMap(updater: (map: KitsuneMap) => void) {
     updateProject((draft) => {
       const map = draft.maps.find((candidate) => candidate.id === selectedMap.id);
       if (map) updater(map);
@@ -87,6 +104,9 @@ function App() {
       if (draft.start.mapId === map.id && !map.spawns[draft.start.spawnId]) {
         map.spawns[draft.start.spawnId] = { x: 0, y: 0 };
       }
+      if (Object.keys(map.spawns).length === 0) {
+        map.spawns.start = { x: 0, y: 0 };
+      }
 
       return draft;
     });
@@ -104,6 +124,21 @@ function App() {
       return;
     }
 
+    if (mode === "spawn") {
+      const existingSpawnId = spawnAt(selectedMap, x, y)?.[0];
+      if (existingSpawnId) {
+        setSelectedSpawnId(existingSpawnId);
+        return;
+      }
+
+      const nextSpawnId = selectedMap.spawns[selectedSpawnId] ? selectedSpawnId : uniqueId("spawn", spawnIds);
+      updateSelectedMap((map) => {
+        map.spawns[nextSpawnId] = { x, y };
+      });
+      setSelectedSpawnId(nextSpawnId);
+      return;
+    }
+
     const id = `${entityKind}-${Date.now().toString(36)}`;
     const entity: Entity = {
       id,
@@ -117,6 +152,21 @@ function App() {
       map.entities.push(entity);
     });
     setSelectedEntityId(id);
+  }
+
+  function selectMap(mapId: string) {
+    const nextMap = project.maps.find((map) => map.id === mapId);
+    setSelectedMapId(mapId);
+    setSelectedSpawnId(Object.keys(nextMap?.spawns ?? {})[0] ?? "");
+    setBrushTilesetKey(nextMap?.tilesetKey ?? Object.keys(project.assets.tilesets)[0] ?? "");
+  }
+
+  function loadSample() {
+    setProject(sampleProject);
+    setSelectedMapId(sampleProject.start.mapId);
+    setSelectedSpawnId(sampleProject.start.spawnId);
+    setSelectedEntityId(sampleProject.maps[0].entities[0]?.id ?? "");
+    setNotice("Sample quest loaded.");
   }
 
   function saveDraft() {
@@ -143,6 +193,7 @@ function App() {
       }
       setProject(result.project);
       setSelectedMapId(result.project.start.mapId);
+      setSelectedSpawnId(result.project.start.spawnId);
       setSelectedEntityId(result.project.maps[0].entities[0]?.id ?? "");
       setNotice(successMessage);
     } catch (error) {
@@ -178,7 +229,7 @@ function App() {
           />
         </div>
         <div className="actions">
-          <button onClick={() => setProject(sampleProject)}>Sample</button>
+          <button onClick={loadSample}>Sample</button>
           <button onClick={saveDraft}>Save Draft</button>
           <button onClick={loadDraft}>Load Draft</button>
           <label className="file-button">
@@ -227,20 +278,17 @@ function App() {
           </label>
           <label>
             Map
-            <select
-              value={selectedMap.id}
-              onChange={(event) => {
-                const nextMap = project.maps.find((map) => map.id === event.target.value);
-                setSelectedMapId(event.target.value);
-                setBrushTilesetKey(nextMap?.tilesetKey ?? Object.keys(project.assets.tilesets)[0] ?? "");
-              }}
-            >
+            <select value={selectedMap.id} onChange={(event) => selectMap(event.target.value)}>
               {project.maps.map((map) => (
                 <option key={map.id} value={map.id}>
                   {map.name}
                 </option>
               ))}
             </select>
+          </label>
+          <label>
+            Map Name
+            <input value={selectedMap.name} onChange={(event) => updateSelectedMap((map) => { map.name = event.target.value; })} />
           </label>
           <div className="map-size-row">
             <label>
@@ -265,16 +313,19 @@ function App() {
             </label>
           </div>
 
-          <div className="segmented">
+          <div className="segmented tool-tabs">
             <button className={mode === "paint" ? "active" : ""} onClick={() => setMode("paint")}>
               Paint
             </button>
             <button className={mode === "entity" ? "active" : ""} onClick={() => setMode("entity")}>
               Entity
             </button>
+            <button className={mode === "spawn" ? "active" : ""} onClick={() => setMode("spawn")}>
+              Spawn
+            </button>
           </div>
 
-          {mode === "paint" ? (
+          {mode === "paint" && (
             <>
               <label>
                 Layer
@@ -315,7 +366,9 @@ function App() {
                 ))}
               </div>
             </>
-          ) : (
+          )}
+
+          {mode === "entity" && (
             <label>
               Entity Kind
               <select value={entityKind} onChange={(event) => setEntityKind(event.target.value as Entity["kind"])}>
@@ -328,29 +381,40 @@ function App() {
             </label>
           )}
 
+          {mode === "spawn" && (
+            <SpawnPanel
+              map={selectedMap}
+              project={project}
+              selectedSpawnId={selectedSpawnId}
+              selectedSpawn={selectedSpawn}
+              setSelectedSpawnId={setSelectedSpawnId}
+              updateProject={updateProject}
+            />
+          )}
+
           <ValidationPanel validation={validation} notice={notice} />
         </aside>
 
         <section className="map-stage" aria-label="Tile map editor">
-          <div
-            className="tile-grid"
-            style={{ gridTemplateColumns: `repeat(${selectedMap.width}, 34px)` }}
-          >
+          <div className="tile-grid" style={{ gridTemplateColumns: `repeat(${selectedMap.width}, 34px)` }}>
             {selectedMap.layers.ground.tiles.map((row, y) =>
               row.map((groundTile, x) => {
                 const decorTile = selectedMap.layers.decor.tiles[y][x];
                 const blocked = tileNumber(selectedMap.layers.collision.tiles[y][x]) > 0;
                 const entity = selectedMap.entities.find((candidate) => candidate.position.x === x && candidate.position.y === y);
                 const sprite = entity?.spriteKey ? project.assets.sprites[entity.spriteKey] : undefined;
+                const spawnEntry = spawnAt(selectedMap, x, y);
+                const selected = selectedEntityId === entity?.id || (mode === "spawn" && selectedSpawnId === spawnEntry?.[0]);
                 return (
                   <button
                     key={`${x}-${y}`}
-                    className={`cell ${blocked ? "blocked" : ""} ${selectedEntityId === entity?.id ? "selected" : ""}`}
+                    className={`cell ${blocked ? "blocked" : ""} ${selected ? "selected" : ""}`}
                     style={tileCellPreviewStyle(project, selectedMap, groundTile)}
                     onClick={() => (entity && mode === "entity" ? setSelectedEntityId(entity.id) : onCellClick(x, y))}
                     title={`${x}, ${y}`}
                   >
                     {tileNumber(decorTile) > 0 && <span className="decor" style={tileCellPreviewStyle(project, selectedMap, decorTile)} />}
+                    {spawnEntry && <span className="spawn-dot" title={`Spawn ${spawnEntry[0]}`}>S</span>}
                     {entity && (
                       <span className={`entity-dot ${entity.kind} ${isPreviewableSprite(sprite) ? "sprite" : ""}`} style={spritePreviewStyle(sprite)}>
                         {!isPreviewableSprite(sprite) && entity.kind[0].toUpperCase()}
@@ -364,21 +428,32 @@ function App() {
         </section>
 
         <aside className="panel right-panel">
-          <EntityPanel
-            entity={selectedEntity}
-            project={project}
-            updateProject={updateProject}
-            onSelect={setSelectedEntityId}
-            entities={selectedMap.entities}
-            updateEntity={updateSelectedEntity}
-            deleteEntity={() => {
-              updateSelectedMap((map) => {
-                map.entities = map.entities.filter((entity) => entity.id !== selectedEntityId);
-              });
-              setSelectedEntityId("");
-            }}
-          />
-          <ContentPanel project={project} updateProject={updateProject} />
+          <nav className="tab-strip" aria-label="Editor sections">
+            {rightPanelTabs.map((tab) => (
+              <button key={tab.id} className={rightTab === tab.id ? "active" : ""} onClick={() => setRightTab(tab.id)}>
+                {tab.label}
+              </button>
+            ))}
+          </nav>
+          {rightTab === "entities" && (
+            <EntityPanel
+              entity={selectedEntity}
+              project={project}
+              updateProject={updateProject}
+              onSelect={setSelectedEntityId}
+              entities={selectedMap.entities}
+              updateEntity={updateSelectedEntity}
+              deleteEntity={() => {
+                updateSelectedMap((map) => {
+                  map.entities = map.entities.filter((entity) => entity.id !== selectedEntityId);
+                });
+                setSelectedEntityId("");
+              }}
+            />
+          )}
+          {rightTab === "knowledge" && <KnowledgePanel project={project} updateProject={updateProject} />}
+          {rightTab === "battles" && <BattlesPanel project={project} updateProject={updateProject} />}
+          {rightTab === "player" && <PlayerPanel project={project} updateProject={updateProject} />}
         </aside>
       </section>
     </main>
@@ -392,6 +467,132 @@ function ValidationPanel({ validation, notice }: { validation: ReturnType<typeof
       <p className={validation.ok ? "valid" : "invalid"}>{validation.ok ? "Project is export-ready." : `${validation.issues.length} issue(s)`}</p>
       {!validation.ok && validation.issues.slice(0, 5).map((issue) => <p key={issue} className="issue">{issue}</p>)}
       <p className="notice">{notice}</p>
+    </section>
+  );
+}
+
+function SpawnPanel({
+  map,
+  project,
+  selectedSpawnId,
+  selectedSpawn,
+  setSelectedSpawnId,
+  updateProject
+}: {
+  map: KitsuneMap;
+  project: KitsuneProject;
+  selectedSpawnId: string;
+  selectedSpawn: KitsuneMap["spawns"][string] | undefined;
+  setSelectedSpawnId: (id: string) => void;
+  updateProject: (updater: (project: KitsuneProject) => KitsuneProject) => void;
+}) {
+  const spawnIds = Object.keys(map.spawns);
+
+  function updateSpawn(updater: (map: KitsuneMap) => void) {
+    updateProject((draft) => {
+      const target = draft.maps.find((candidate) => candidate.id === map.id);
+      if (target) updater(target);
+      return draft;
+    });
+  }
+
+  function addSpawn() {
+    const id = uniqueId("spawn", spawnIds);
+    updateSpawn((draft) => {
+      draft.spawns[id] = { x: 0, y: 0 };
+    });
+    setSelectedSpawnId(id);
+  }
+
+  function renameSpawn(nextId: string) {
+    const cleanId = slug(nextId);
+    if (!cleanId || cleanId === selectedSpawnId || map.spawns[cleanId]) return;
+
+    updateProject((draft) => {
+      const target = draft.maps.find((candidate) => candidate.id === map.id);
+      const spawn = target?.spawns[selectedSpawnId];
+      if (!target || !spawn) return draft;
+
+      delete target.spawns[selectedSpawnId];
+      target.spawns[cleanId] = spawn;
+      if (draft.start.mapId === target.id && draft.start.spawnId === selectedSpawnId) {
+        draft.start.spawnId = cleanId;
+      }
+      retargetSpawnReferences(draft, target.id, selectedSpawnId, cleanId);
+      return draft;
+    });
+    setSelectedSpawnId(cleanId);
+  }
+
+  function deleteSpawn() {
+    if (!selectedSpawnId) return;
+    let nextSelected = "";
+
+    updateProject((draft) => {
+      const target = draft.maps.find((candidate) => candidate.id === map.id);
+      if (!target) return draft;
+
+      delete target.spawns[selectedSpawnId];
+      nextSelected = Object.keys(target.spawns)[0] ?? "start";
+      if (Object.keys(target.spawns).length === 0) {
+        target.spawns[nextSelected] = { x: 0, y: 0 };
+      }
+
+      if (draft.start.mapId === target.id && draft.start.spawnId === selectedSpawnId) {
+        draft.start.spawnId = nextSelected;
+      }
+      retargetSpawnReferences(draft, target.id, selectedSpawnId, nextSelected);
+      return draft;
+    });
+    setSelectedSpawnId(nextSelected);
+  }
+
+  return (
+    <section className="stack">
+      <h2>Spawns</h2>
+      <select value={selectedSpawnId} onChange={(event) => setSelectedSpawnId(event.target.value)}>
+        {spawnIds.map((id) => (
+          <option key={id} value={id}>
+            {id}
+          </option>
+        ))}
+      </select>
+      {selectedSpawn ? (
+        <>
+          <label>
+            Spawn ID
+            <input value={selectedSpawnId} onChange={(event) => renameSpawn(event.target.value)} />
+          </label>
+          <div className="coord-row">
+            <label>
+              X
+              <input
+                type="number"
+                min="0"
+                value={selectedSpawn.x}
+                onChange={(event) => updateSpawn((draft) => { draft.spawns[selectedSpawnId].x = clampCoordinate(Number(event.target.value), draft.width); })}
+              />
+            </label>
+            <label>
+              Y
+              <input
+                type="number"
+                min="0"
+                value={selectedSpawn.y}
+                onChange={(event) => updateSpawn((draft) => { draft.spawns[selectedSpawnId].y = clampCoordinate(Number(event.target.value), draft.height); })}
+              />
+            </label>
+          </div>
+        </>
+      ) : (
+        <p className="muted">Add a spawn point for this map.</p>
+      )}
+      <div className="button-row">
+        <button onClick={addSpawn}>Add Spawn</button>
+        <button className="danger" onClick={deleteSpawn} disabled={!selectedSpawnId}>Delete Spawn</button>
+      </div>
+      <p className="muted">Click a map cell in Spawn mode to select or move a spawn.</p>
+      {project.start.mapId === map.id && <p className="muted">Project start: {project.start.spawnId}</p>}
     </section>
   );
 }
@@ -413,47 +614,12 @@ function EntityPanel({
   updateEntity: (updater: (entity: Entity) => void) => void;
   deleteEntity: () => void;
 }) {
-  const [spritePickerOpen, setSpritePickerOpen] = React.useState(false);
-  const [spriteTilesetKey, setSpriteTilesetKey] = React.useState(Object.keys(project.assets.tilesets)[0] ?? "");
   const currentSprite = entity?.spriteKey ? project.assets.sprites[entity.spriteKey] : undefined;
-  const tilesets = Object.values(project.assets.tilesets);
-  const spriteTileset = project.assets.tilesets[spriteTilesetKey] ?? tilesets[0];
 
-  function openSpritePicker() {
-    setSpriteTilesetKey(tilesetKeyForSprite(project, currentSprite) ?? tilesets[0]?.key ?? "");
-    setSpritePickerOpen(true);
-  }
-
-  function setSpriteFromTileset(tileset: TilesetAsset, frame: number) {
-    if (!entity || !isPreviewableTileset(tileset)) return;
-    const key = `sprite-${tileset.key}-${frame + 1}`;
-    updateProject((draft) => {
-      if (!draft.assets.sprites[key]) {
-        draft.assets.sprites[key] = {
-          key,
-          label: `${tileset.label} frame ${frame + 1}`,
-          image: tileset.image,
-          frameWidth: tileset.tileSize ?? 16,
-          frameHeight: tileset.tileSize ?? 16,
-          frame,
-          columns: tileset.columns,
-          rows: tileset.rows
-        };
-      }
-
-      for (const map of draft.maps) {
-        const target = map.entities.find((candidate) => candidate.id === entity.id);
-        if (target) target.spriteKey = key;
-      }
-
-      return draft;
-    });
-    setSpritePickerOpen(false);
-  }
-
-  function clearSprite() {
+  function setSpriteKey(spriteKey: string | undefined) {
     updateEntity((draft) => {
-      delete draft.spriteKey;
+      if (spriteKey) draft.spriteKey = spriteKey;
+      else delete draft.spriteKey;
     });
   }
 
@@ -480,59 +646,13 @@ function EntityPanel({
               {entityKinds.map((kind) => <option key={kind} value={kind}>{kind}</option>)}
             </select>
           </label>
-          <label>
-            Sprite
-            <div className="sprite-field">
-              <span className="sprite-preview" style={spritePreviewStyle(currentSprite)} />
-              <button type="button" onClick={openSpritePicker}>Choose Sprite</button>
-              <button type="button" onClick={clearSprite}>Clear</button>
-            </div>
-          </label>
-          {spritePickerOpen && (
-            <div className="sprite-modal-backdrop" role="presentation">
-              <section className="sprite-modal" role="dialog" aria-modal="true" aria-label="Choose entity sprite">
-                <header>
-                  <h2>Choose Sprite</h2>
-                  <button type="button" onClick={() => setSpritePickerOpen(false)} aria-label="Close sprite picker">Close</button>
-                </header>
-                <div className="sprite-modal-body">
-                  <label className="tileset-switcher">
-                    Tileset
-                    <select value={spriteTileset?.key ?? ""} onChange={(event) => setSpriteTilesetKey(event.target.value)}>
-                      {tilesets.map((tileset) => (
-                        <option key={tileset.key} value={tileset.key}>
-                          {tileset.label}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  {spriteTileset && (
-                    <section>
-                      <h3>{spriteTileset.label}</h3>
-                      <div className="sprite-frame-grid">
-                        {tilePaletteValues(spriteTileset).filter((value) => value > 0).map((value) => {
-                          const frame = value - 1;
-                          const active = Boolean(currentSprite && currentSprite.image === spriteTileset.image && currentSprite.frame === frame);
-                          return (
-                            <button
-                              key={`${spriteTileset.key}-${frame}`}
-                              type="button"
-                              className={active ? "active" : ""}
-                              onClick={() => setSpriteFromTileset(spriteTileset, frame)}
-                              title={`${spriteTileset.label} frame ${value}`}
-                              aria-label={`${spriteTileset.label} frame ${value}`}
-                            >
-                              <span className="sprite-choice-preview" style={tilePreviewStyle(spriteTileset, value)} />
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </section>
-                  )}
-                </div>
-              </section>
-            </div>
-          )}
+          <SpriteField
+            label="Sprite"
+            project={project}
+            currentSprite={currentSprite}
+            updateProject={updateProject}
+            setSpriteKey={setSpriteKey}
+          />
           <div className="coord-row">
             <label>
               X
@@ -550,6 +670,108 @@ function EntityPanel({
         <p className="muted">Place or select an entity on the map.</p>
       )}
     </section>
+  );
+}
+
+function SpriteField({
+  label,
+  project,
+  currentSprite,
+  updateProject,
+  setSpriteKey
+}: {
+  label: string;
+  project: KitsuneProject;
+  currentSprite: SpriteAsset | undefined;
+  updateProject: (updater: (project: KitsuneProject) => KitsuneProject) => void;
+  setSpriteKey: (spriteKey: string | undefined) => void;
+}) {
+  const [spritePickerOpen, setSpritePickerOpen] = React.useState(false);
+  const [spriteTilesetKey, setSpriteTilesetKey] = React.useState(Object.keys(project.assets.tilesets)[0] ?? "");
+  const tilesets = Object.values(project.assets.tilesets);
+  const spriteTileset = project.assets.tilesets[spriteTilesetKey] ?? tilesets[0];
+
+  function openSpritePicker() {
+    setSpriteTilesetKey(tilesetKeyForSprite(project, currentSprite) ?? tilesets[0]?.key ?? "");
+    setSpritePickerOpen(true);
+  }
+
+  function setSpriteFromTileset(tileset: TilesetAsset, frame: number) {
+    if (!isPreviewableTileset(tileset)) return;
+    const key = `sprite-${tileset.key}-${frame + 1}`;
+    updateProject((draft) => {
+      if (!draft.assets.sprites[key]) {
+        draft.assets.sprites[key] = {
+          key,
+          label: `${tileset.label} frame ${frame + 1}`,
+          image: tileset.image,
+          frameWidth: tileset.tileSize ?? 16,
+          frameHeight: tileset.tileSize ?? 16,
+          frame,
+          columns: tileset.columns,
+          rows: tileset.rows
+        };
+      }
+      return draft;
+    });
+    setSpriteKey(key);
+    setSpritePickerOpen(false);
+  }
+
+  return (
+    <label>
+      {label}
+      <div className="sprite-field">
+        <span className="sprite-preview" style={spritePreviewStyle(currentSprite)} />
+        <button type="button" onClick={openSpritePicker}>Choose Sprite</button>
+        <button type="button" onClick={() => setSpriteKey(undefined)}>Clear</button>
+      </div>
+      {spritePickerOpen && (
+        <div className="sprite-modal-backdrop" role="presentation">
+          <section className="sprite-modal" role="dialog" aria-modal="true" aria-label={`Choose ${label.toLowerCase()}`}>
+            <header>
+              <h2>Choose Sprite</h2>
+              <button type="button" onClick={() => setSpritePickerOpen(false)} aria-label="Close sprite picker">Close</button>
+            </header>
+            <div className="sprite-modal-body">
+              <label className="tileset-switcher">
+                Tileset
+                <select value={spriteTileset?.key ?? ""} onChange={(event) => setSpriteTilesetKey(event.target.value)}>
+                  {tilesets.map((tileset) => (
+                    <option key={tileset.key} value={tileset.key}>
+                      {tileset.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              {spriteTileset && (
+                <section>
+                  <h3>{spriteTileset.label}</h3>
+                  <div className="sprite-frame-grid">
+                    {tilePaletteValues(spriteTileset).filter((value) => value > 0).map((value) => {
+                      const frame = value - 1;
+                      const active = Boolean(currentSprite && currentSprite.image === spriteTileset.image && currentSprite.frame === frame);
+                      return (
+                        <button
+                          key={`${spriteTileset.key}-${frame}`}
+                          type="button"
+                          className={active ? "active" : ""}
+                          onClick={() => setSpriteFromTileset(spriteTileset, frame)}
+                          title={`${spriteTileset.label} frame ${value}`}
+                          aria-label={`${spriteTileset.label} frame ${value}`}
+                        >
+                          <span className="sprite-choice-preview" style={tilePreviewStyle(spriteTileset, value)} />
+                        </button>
+                      );
+                    })}
+                  </div>
+                </section>
+              )}
+            </div>
+          </section>
+        </div>
+      )}
+    </label>
   );
 }
 
@@ -590,10 +812,21 @@ function EventEditor({
           )}
           {command.type === "transferMap" && (
             <div className="coord-row">
-              <select value={command.mapId} onChange={(event) => updateAt(index, (draft) => draft.type === "transferMap" ? { ...draft, mapId: event.target.value } : draft)}>
+              <select
+                value={command.mapId}
+                onChange={(event) => updateAt(index, (draft) => {
+                  if (draft.type !== "transferMap") return draft;
+                  const targetMap = project.maps.find((map) => map.id === event.target.value);
+                  return { ...draft, mapId: event.target.value, spawnId: Object.keys(targetMap?.spawns ?? {})[0] ?? "" };
+                })}
+              >
                 {project.maps.map((map) => <option key={map.id} value={map.id}>{map.name}</option>)}
               </select>
-              <input value={command.spawnId} onChange={(event) => updateAt(index, (draft) => draft.type === "transferMap" ? { ...draft, spawnId: event.target.value } : draft)} />
+              <select value={command.spawnId} onChange={(event) => updateAt(index, (draft) => draft.type === "transferMap" ? { ...draft, spawnId: event.target.value } : draft)}>
+                {Object.keys(project.maps.find((map) => map.id === command.mapId)?.spawns ?? {}).map((spawnId) => (
+                  <option key={spawnId} value={spawnId}>{spawnId}</option>
+                ))}
+              </select>
             </div>
           )}
           <button onClick={() => updateCommands(commands.filter((_, current) => current !== index))}>Remove</button>
@@ -608,10 +841,25 @@ function EventEditor({
   );
 }
 
-function ContentPanel({ project, updateProject }: { project: KitsuneProject; updateProject: (updater: (project: KitsuneProject) => KitsuneProject) => void }) {
+function KnowledgePanel({ project, updateProject }: { project: KitsuneProject; updateProject: (updater: (project: KitsuneProject) => KitsuneProject) => void }) {
   function updateKnowledge(index: number, updater: (entry: KnowledgeEntry) => void) {
     updateProject((draft) => {
       updater(draft.knowledge[index]);
+      return draft;
+    });
+  }
+
+  function addKnowledge() {
+    updateProject((draft) => {
+      draft.knowledge.push({
+        id: `knowledge-${Date.now().toString(36)}`,
+        title: "New Knowledge",
+        summary: "Short summary",
+        prompt: "What is the answer?",
+        answer: "Answer",
+        body: "Detailed note.",
+        tags: []
+      });
       return draft;
     });
   }
@@ -622,40 +870,189 @@ function ContentPanel({ project, updateProject }: { project: KitsuneProject; upd
       {project.knowledge.map((entry, index) => (
         <details key={entry.id}>
           <summary>{entry.title}</summary>
+          <label>ID<input value={entry.id} onChange={(event) => updateKnowledge(index, (draft) => { draft.id = slug(event.target.value); })} /></label>
           <label>Title<input value={entry.title} onChange={(event) => updateKnowledge(index, (draft) => { draft.title = event.target.value; })} /></label>
+          <label>Summary<input value={entry.summary} onChange={(event) => updateKnowledge(index, (draft) => { draft.summary = event.target.value; })} /></label>
           <label>Prompt<input value={entry.prompt} onChange={(event) => updateKnowledge(index, (draft) => { draft.prompt = event.target.value; })} /></label>
           <label>Answer<input value={entry.answer} onChange={(event) => updateKnowledge(index, (draft) => { draft.answer = event.target.value; })} /></label>
           <label>Body<textarea value={entry.body} onChange={(event) => updateKnowledge(index, (draft) => { draft.body = event.target.value; })} /></label>
+          <label>Image URL<input value={entry.imageUrl ?? ""} onChange={(event) => updateKnowledge(index, (draft) => { setOptionalString(draft, "imageUrl", event.target.value); })} /></label>
+          <label>
+            Upload Image
+            <input
+              type="file"
+              accept="image/*"
+              onChange={(event) => {
+                const file = event.target.files?.[0];
+                if (!file) return;
+                const reader = new FileReader();
+                reader.addEventListener("load", () => {
+                  if (typeof reader.result !== "string") return;
+                  updateKnowledge(index, (draft) => {
+                    draft.imageUrl = reader.result as string;
+                    draft.imageAlt = draft.imageAlt || file.name;
+                  });
+                });
+                reader.readAsDataURL(file);
+                event.currentTarget.value = "";
+              }}
+            />
+          </label>
+          <label>Image Alt<input value={entry.imageAlt ?? ""} onChange={(event) => updateKnowledge(index, (draft) => { setOptionalString(draft, "imageAlt", event.target.value); })} /></label>
+          {entry.imageUrl && (
+            <div className="knowledge-image-preview">
+              <img src={entry.imageUrl} alt={entry.imageAlt || entry.title} />
+              <button type="button" onClick={() => updateKnowledge(index, (draft) => { delete draft.imageUrl; delete draft.imageAlt; })}>Remove Image</button>
+            </div>
+          )}
         </details>
       ))}
-      <button
-        onClick={() =>
+      <button onClick={addKnowledge}>Add Knowledge</button>
+    </section>
+  );
+}
+
+function BattlesPanel({ project, updateProject }: { project: KitsuneProject; updateProject: (updater: (project: KitsuneProject) => KitsuneProject) => void }) {
+  function updateBattle(index: number, updater: (battle: BattleDefinition) => void) {
+    updateProject((draft) => {
+      updater(draft.battles[index]);
+      return draft;
+    });
+  }
+
+  function addBattle() {
+    updateProject((draft) => {
+      const id = uniqueId("battle", draft.battles.map((battle) => battle.id));
+      draft.battles.push({
+        id,
+        name: "New Battle",
+        enemyName: "Enemy",
+        victoryFlag: `${id}_victory`,
+        requiredKnowledgeIds: [draft.knowledge[0]?.id ?? ""].filter(Boolean),
+        playerHp: draft.player.maxHp,
+        enemyHp: 3
+      });
+      return draft;
+    });
+  }
+
+  function deleteBattle(index: number) {
+    updateProject((draft) => {
+      const [removed] = draft.battles.splice(index, 1);
+      if (removed) removeBattleReferences(draft, removed.id);
+      return draft;
+    });
+  }
+
+  return (
+    <section className="content-panel">
+      <h2>Battles</h2>
+      {project.battles.map((battle, index) => (
+        <details key={battle.id}>
+          <summary>{battle.name}</summary>
+          <label>
+            ID
+            <input
+              value={battle.id}
+              onChange={(event) => {
+                const nextId = slug(event.target.value);
+                const previousId = battle.id;
+                updateProject((draft) => {
+                  const target = draft.battles[index];
+                  if (!target || nextId === previousId || draft.battles.some((candidate, current) => current !== index && candidate.id === nextId)) return draft;
+                  target.id = nextId;
+                  retargetBattleReferences(draft, previousId, nextId);
+                  return draft;
+                });
+              }}
+            />
+          </label>
+          <label>Name<input value={battle.name} onChange={(event) => updateBattle(index, (draft) => { draft.name = event.target.value; })} /></label>
+          <label>Enemy Name<input value={battle.enemyName} onChange={(event) => updateBattle(index, (draft) => { draft.enemyName = event.target.value; })} /></label>
+          <label>Victory Flag<input value={battle.victoryFlag} onChange={(event) => updateBattle(index, (draft) => { draft.victoryFlag = slug(event.target.value).replaceAll("-", "_"); })} /></label>
+          <div className="coord-row">
+            <label>
+              Player HP
+              <input type="number" min="1" value={battle.playerHp} onChange={(event) => updateBattle(index, (draft) => { draft.playerHp = positiveInt(event.target.value); })} />
+            </label>
+            <label>
+              Enemy HP
+              <input type="number" min="1" value={battle.enemyHp} onChange={(event) => updateBattle(index, (draft) => { draft.enemyHp = positiveInt(event.target.value); })} />
+            </label>
+          </div>
+          <fieldset className="checkbox-list">
+            <legend>Required Knowledge</legend>
+            {project.knowledge.map((entry) => (
+              <label key={entry.id} className="checkbox-row">
+                <input
+                  type="checkbox"
+                  checked={battle.requiredKnowledgeIds.includes(entry.id)}
+                  onChange={(event) =>
+                    updateBattle(index, (draft) => {
+                      draft.requiredKnowledgeIds = event.target.checked
+                        ? [...draft.requiredKnowledgeIds, entry.id]
+                        : draft.requiredKnowledgeIds.filter((id) => id !== entry.id);
+                      if (draft.requiredKnowledgeIds.length === 0) draft.requiredKnowledgeIds = [project.knowledge[0]?.id ?? ""].filter(Boolean);
+                    })
+                  }
+                />
+                {entry.title}
+              </label>
+            ))}
+          </fieldset>
+          <button className="danger" onClick={() => deleteBattle(index)}>Delete Battle</button>
+        </details>
+      ))}
+      <button onClick={addBattle}>Add Battle</button>
+    </section>
+  );
+}
+
+function PlayerPanel({ project, updateProject }: { project: KitsuneProject; updateProject: (updater: (project: KitsuneProject) => KitsuneProject) => void }) {
+  const currentSprite = project.player.spriteKey ? project.assets.sprites[project.player.spriteKey] : undefined;
+
+  return (
+    <section className="content-panel">
+      <h2>Player</h2>
+      <label>
+        Name
+        <input
+          value={project.player.name}
+          onChange={(event) =>
+            updateProject((draft) => {
+              draft.player.name = event.target.value;
+              return draft;
+            })
+          }
+        />
+      </label>
+      <label>
+        Max HP
+        <input
+          type="number"
+          min="1"
+          value={project.player.maxHp}
+          onChange={(event) =>
+            updateProject((draft) => {
+              draft.player.maxHp = positiveInt(event.target.value);
+              return draft;
+            })
+          }
+        />
+      </label>
+      <SpriteField
+        label="Player Sprite"
+        project={project}
+        currentSprite={currentSprite}
+        updateProject={updateProject}
+        setSpriteKey={(spriteKey) =>
           updateProject((draft) => {
-            draft.knowledge.push({
-              id: `knowledge-${Date.now().toString(36)}`,
-              title: "New Knowledge",
-              summary: "Short summary",
-              prompt: "What is the answer?",
-              answer: "Answer",
-              body: "Detailed note.",
-              tags: []
-            });
+            if (spriteKey) draft.player.spriteKey = spriteKey;
+            else delete draft.player.spriteKey;
             return draft;
           })
         }
-      >
-        Add Knowledge
-      </button>
-
-      <h2>Battles</h2>
-      {project.battles.map((battle) => (
-        <details key={battle.id}>
-          <summary>{battle.name}</summary>
-          <p className="muted">Enemy: {battle.enemyName}</p>
-          <p className="muted">Knowledge: {battle.requiredKnowledgeIds.join(", ")}</p>
-          <p className="muted">Victory flag: {battle.victoryFlag}</p>
-        </details>
-      ))}
+      />
     </section>
   );
 }
@@ -667,12 +1064,36 @@ function defaultEvent(kind: Entity["kind"], project: KitsuneProject): EventComma
   return [{ type: "dialogue", speaker: "NPC", text: "New dialogue." }];
 }
 
+function setOptionalString<T extends object, K extends keyof T>(target: T, key: K, value: string) {
+  if (value.trim()) target[key] = value as T[K];
+  else delete target[key];
+}
+
 function slug(value: string): string {
   return value.toLowerCase().replace(/[^a-z0-9-]+/g, "-").replace(/^-|-$/g, "") || "project";
 }
 
+function uniqueId(prefix: string, existing: string[]): string {
+  let index = existing.length + 1;
+  let id = `${prefix}-${index}`;
+  while (existing.includes(id)) {
+    index += 1;
+    id = `${prefix}-${index}`;
+  }
+  return id;
+}
+
+function positiveInt(value: string | number): number {
+  const parsed = typeof value === "number" ? value : Number(value);
+  return Math.max(1, Math.floor(Number.isFinite(parsed) ? parsed : 1));
+}
+
 function clampMapDimension(value: number): number {
   return Math.max(1, Math.floor(Number.isFinite(value) ? value : 1));
+}
+
+function clampCoordinate(value: number, size: number): number {
+  return Math.min(size - 1, Math.max(0, Math.floor(Number.isFinite(value) ? value : 0)));
 }
 
 function resizeTiles(tiles: TileValue[][], width: number, height: number, fill: TileValue): TileValue[][] {
@@ -683,6 +1104,81 @@ function resizeTiles(tiles: TileValue[][], width: number, height: number, fill: 
 
 function isInBounds(position: { x: number; y: number }, width: number, height: number): boolean {
   return position.x >= 0 && position.y >= 0 && position.x < width && position.y < height;
+}
+
+function spawnAt(map: KitsuneMap, x: number, y: number): [string, KitsuneMap["spawns"][string]] | undefined {
+  return Object.entries(map.spawns).find(([, spawn]) => spawn.x === x && spawn.y === y);
+}
+
+function retargetSpawnReferences(project: KitsuneProject, mapId: string, oldSpawnId: string, nextSpawnId: string) {
+  for (const map of project.maps) {
+    for (const entity of map.entities) {
+      entity.event = retargetSpawnCommands(entity.event, mapId, oldSpawnId, nextSpawnId);
+    }
+  }
+}
+
+function retargetSpawnCommands(commands: EventCommand[], mapId: string, oldSpawnId: string, nextSpawnId: string): EventCommand[] {
+  return commands.map((command) => {
+    if (command.type === "transferMap" && command.mapId === mapId && command.spawnId === oldSpawnId) {
+      return { ...command, spawnId: nextSpawnId };
+    }
+    if (command.type === "branch") {
+      return {
+        ...command,
+        then: retargetSpawnCommands(command.then, mapId, oldSpawnId, nextSpawnId),
+        else: retargetSpawnCommands(command.else ?? [], mapId, oldSpawnId, nextSpawnId)
+      };
+    }
+    return command;
+  });
+}
+
+function removeBattleReferences(project: KitsuneProject, battleId: string) {
+  for (const map of project.maps) {
+    for (const entity of map.entities) {
+      entity.event = removeBattleCommands(entity.event, battleId);
+    }
+  }
+}
+
+function retargetBattleReferences(project: KitsuneProject, oldBattleId: string, nextBattleId: string) {
+  for (const map of project.maps) {
+    for (const entity of map.entities) {
+      entity.event = retargetBattleCommands(entity.event, oldBattleId, nextBattleId);
+    }
+  }
+}
+
+function retargetBattleCommands(commands: EventCommand[], oldBattleId: string, nextBattleId: string): EventCommand[] {
+  return commands.map((command) => {
+    if (command.type === "startBattle" && command.battleId === oldBattleId) {
+      return { ...command, battleId: nextBattleId };
+    }
+    if (command.type === "branch") {
+      return {
+        ...command,
+        then: retargetBattleCommands(command.then, oldBattleId, nextBattleId),
+        else: retargetBattleCommands(command.else ?? [], oldBattleId, nextBattleId)
+      };
+    }
+    return command;
+  });
+}
+
+function removeBattleCommands(commands: EventCommand[], battleId: string): EventCommand[] {
+  return commands.flatMap((command) => {
+    if (command.type === "startBattle" && command.battleId === battleId) return [] as EventCommand[];
+    if (command.type === "branch") {
+      const nextCommand: EventCommand = {
+        ...command,
+        then: removeBattleCommands(command.then, battleId),
+        else: removeBattleCommands(command.else ?? [], battleId)
+      };
+      return [nextCommand];
+    }
+    return [command];
+  });
 }
 
 function tilesetForMap(project: KitsuneProject, map: KitsuneMap): TilesetAsset | undefined {
