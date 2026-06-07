@@ -20,19 +20,19 @@ Kitsune Engine is a browser-first MVP for building and playing learning JRPGs.
 npm install
 ```
 
-### Launch the test servers
+### Launch Kitsune
 
-Run the two app servers in separate terminals:
+Run the shared development server:
 
 ```sh
-npm run dev:tamamo
-npm run dev:kuzunoha
+npm run dev
 ```
 
-- Tamamo runs at `http://127.0.0.1:5173`
-- Kuzunoha runs at `http://127.0.0.1:5174`
+- Launcher: `http://127.0.0.1:5173/`
+- Tamamo: `http://127.0.0.1:5173/tamamo`
+- Kuzunoha: `http://127.0.0.1:5173/kuzunoha`
 
-These are the same local servers used by the Playwright smoke test.
+This is the same local server used by the Playwright smoke test.
 
 ### Run tests
 
@@ -48,7 +48,7 @@ Smoke test:
 npm run test:quest-smoke
 ```
 
-The smoke test automatically starts both dev servers if they are not already running.
+The smoke test automatically starts the shared dev server if it is not already running.
 
 ### Build
 
@@ -58,8 +58,7 @@ npm run build
 
 ## Development Notes
 
-- `npm run dev:tamamo` serves the editor UI on port `5173`.
-- `npm run dev:kuzunoha` serves the game client on port `5174`.
+- `npm run dev` serves the launcher, editor, and game client on port `5173`.
 - `npm test` runs the Vitest suite in `packages/**`.
 - `npm run test:quest-smoke` runs the end-to-end Playwright flow in `tests/smoke/quest.spec.ts`.
 

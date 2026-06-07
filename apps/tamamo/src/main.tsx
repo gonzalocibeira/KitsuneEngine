@@ -1,5 +1,4 @@
 import React from "react";
-import { createRoot } from "react-dom/client";
 import { sampleProject } from "@kitsune/schema/sampleProject";
 import {
   createEmptyLayer,
@@ -358,6 +357,7 @@ function TamamoEditor() {
           />
         </div>
         <div className="actions">
+          <a className="topbar-link" href="/" data-route>Back to Kitsune</a>
           <button onClick={() => setSampleConfirmationOpen(true)}>Sample</button>
           <button onClick={saveDraft}>Save Draft</button>
           <button onClick={loadDraft}>Load Draft</button>
@@ -682,19 +682,21 @@ function TamamoEditor() {
   );
 }
 
-function App() {
+export default function App() {
   const [authenticated, setAuthenticated] = React.useState(false);
 
-  if (!authenticated) {
-    return (
+  return (
+    <div className="tamamo-app">
+      {!authenticated ? (
       <LoginScreen
         authenticationService={placeholderAuthenticationService}
         onAuthenticated={() => setAuthenticated(true)}
       />
-    );
-  }
-
-  return <TamamoEditor />;
+      ) : (
+        <TamamoEditor />
+      )}
+    </div>
+  );
 }
 
 function ConfirmationDialog({
@@ -1940,5 +1942,3 @@ function isPreviewableTileset(tileset: TilesetAsset | undefined): tileset is Til
 function isPreviewableSprite(sprite: SpriteAsset | undefined): sprite is SpriteAsset & { image: string; frame: number; columns: number; rows: number } {
   return Boolean(sprite?.image && sprite.frame !== undefined && sprite.columns && sprite.rows);
 }
-
-createRoot(document.getElementById("root")!).render(<App />);
