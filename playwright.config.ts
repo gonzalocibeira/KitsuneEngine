@@ -5,21 +5,13 @@ export default defineConfig({
   timeout: 60_000,
   use: {
     ...devices["Desktop Chrome"],
-    baseURL: "http://127.0.0.1:5174",
+    baseURL: "http://127.0.0.1:5173",
     trace: "on-first-retry"
   },
-  webServer: [
-    {
-      command: "npm run dev:tamamo",
-      url: "http://127.0.0.1:5173",
-      reuseExistingServer: true,
-      timeout: 60_000
-    },
-    {
-      command: "npm run dev:kuzunoha",
-      url: "http://127.0.0.1:5174",
-      reuseExistingServer: true,
-      timeout: 60_000
-    }
-  ]
+  webServer: {
+    command: "npm run dev",
+    url: "http://127.0.0.1:5173",
+    reuseExistingServer: true,
+    timeout: 60_000
+  }
 });

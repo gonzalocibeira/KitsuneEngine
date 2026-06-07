@@ -18,14 +18,38 @@ async function touchActions(page: import("@playwright/test").Page, actions: Arra
 }
 
 async function loginToTamamo(page: import("@playwright/test").Page) {
-  await page.goto("http://127.0.0.1:5173");
+  await page.goto("/tamamo");
   await page.getByRole("button", { name: "Login" }).click();
 }
 
+test("launcher navigates between the shared applications", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.getByRole("heading", { name: "Kitsune" })).toBeVisible();
+  await expect(page.locator("[data-branded-home]")).toBeVisible();
+
+  await page.getByRole("link", { name: /Go to Tamamo/ }).click();
+  await expect(page).toHaveURL(/\/tamamo$/);
+  await expect(page.getByRole("heading", { name: "Tamamo" })).toBeVisible();
+  await page.reload();
+  await expect(page.getByRole("heading", { name: "Tamamo" })).toBeVisible();
+  await page.getByRole("link", { name: "Back to Kitsune" }).click();
+  await expect(page).toHaveURL(/\/$/);
+
+  await page.getByRole("link", { name: /Go to Kuzunoha/ }).click();
+  await expect(page).toHaveURL(/\/kuzunoha$/);
+  await expect(page.getByRole("heading", { name: "Kuzunoha" })).toBeVisible();
+  await expect(page.locator("[data-branded-home]")).toBeVisible();
+  await page.reload();
+  await expect(page.getByRole("heading", { name: "Kuzunoha" })).toBeVisible();
+  await page.getByRole("link", { name: "Back to Kitsune" }).click();
+  await expect(page).toHaveURL(/\/$/);
+});
+
 test("Tamamo requires placeholder login before opening the editor", async ({ page }) => {
-  await page.goto("http://127.0.0.1:5173");
+  await page.goto("/tamamo");
 
   await expect(page.getByRole("heading", { name: "Tamamo" })).toBeVisible();
+  await expect(page.locator("[data-branded-home]")).toBeVisible();
   await expect(page.getByLabel("Username")).toBeVisible();
   await expect(page.getByLabel("Password")).toHaveAttribute("type", "password");
   await expect(page.getByRole("button", { name: "Login" })).toBeVisible();
@@ -33,6 +57,7 @@ test("Tamamo requires placeholder login before opening the editor", async ({ pag
 
   await page.getByRole("button", { name: "Login" }).click();
   await expect(page.getByLabel("New map name")).toBeVisible();
+  await expect(page.getByRole("link", { name: "Back to Kitsune" })).toBeVisible();
 });
 
 test("Tamamo paints a newly created map", async ({ page }) => {
@@ -210,7 +235,7 @@ test("Tamamo export loads and plays in Kuzunoha", async ({ page }) => {
   expect(exported.maps[0].entities).toContainEqual(expect.objectContaining({ kind: "object", position: { x: 2, y: 1 }, collidable: false }));
   expect(Object.values(exported.maps[0].spawns)).toContainEqual({ x: 1, y: 1 });
 
-  await page.goto("http://127.0.0.1:5174");
+  await page.goto("/kuzunoha");
   await page.evaluate(() => localStorage.clear());
   await page.locator('input[type="file"]').setInputFiles(exportedPath!);
   await expect(page.getByLabel("World status")).toBeVisible();
@@ -233,7 +258,7 @@ test("Tamamo export loads and plays in Kuzunoha", async ({ page }) => {
 });
 
 test("Kuzunoha unlocks content with persistent inventory keys", async ({ page }) => {
-  await page.goto("http://127.0.0.1:5174");
+  await page.goto("/kuzunoha");
   await page.evaluate(() => localStorage.clear());
   await page.getByRole("button", { name: "Play Sample Quest" }).click();
   const worldHud = page.getByLabel("World status");
@@ -261,6 +286,7 @@ test("Kuzunoha unlocks content with persistent inventory keys", async ({ page })
 
   await page.keyboard.press("Escape");
   await expect(worldHud).toBeHidden();
+  await expect(page.getByRole("link", { name: "Back to Kitsune" })).toBeVisible();
   await page.locator("summary").filter({ hasText: "Inventory" }).click();
   await expect(page.getByText("Annex Key")).toBeVisible();
   await page.keyboard.press("Escape");
@@ -282,7 +308,7 @@ test("Kuzunoha unlocks content with persistent inventory keys", async ({ page })
 });
 
 test("Kuzunoha saves, continues, pauses, and preserves text input", async ({ page }) => {
-  await page.goto("http://127.0.0.1:5174");
+  await page.goto("/kuzunoha");
   await page.evaluate(() => localStorage.clear());
   await page.getByRole("button", { name: "Play Sample Quest" }).click();
   await expect(page.locator("canvas")).toBeVisible();

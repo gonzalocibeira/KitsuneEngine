@@ -3,6 +3,7 @@
   "references": [
     { "path": "packages/schema" },
     { "path": "packages/runtime-core" },
+    { "path": "packages/ui" },
     { "path": "apps/tamamo" },
     { "path": "apps/kuzunoha" }
   ]

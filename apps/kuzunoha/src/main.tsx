@@ -1,6 +1,6 @@
 import React from "react";
-import { createRoot } from "react-dom/client";
 import Phaser from "phaser";
+import { BrandedHomeScreen } from "@kitsune/ui";
 import { sampleProject } from "@kitsune/schema/sampleProject";
 import { validateProject, type Entity, type KitsuneMap, type KitsuneProject, type SpriteAsset, type TilesetAsset, type TileValue } from "@kitsune/schema";
 import { createSaveKey, GameRuntime, type LegacySaveState, type RuntimeSnapshot, type SaveState, type Version1SaveState } from "@kitsune/runtime-core";
@@ -19,7 +19,7 @@ type StoredGame = {
 
 const LATEST_SAVE_KEY = "kitsune-save:latest";
 
-function App() {
+function KuzunohaApplication() {
   const [handle, setHandle] = React.useState<RuntimeHandle | undefined>();
   const [snapshot, setSnapshot] = React.useState<RuntimeSnapshot | undefined>();
   const [error, setError] = React.useState("");
@@ -269,20 +269,23 @@ function BootScreen({
   loadProject: (project: KitsuneProject, save?: SaveState | Version1SaveState | LegacySaveState) => void;
 }) {
   return (
-    <main className="boot">
-      <section className="boot-panel">
-        <p className="eyebrow">Kuzunoha Player</p>
-        <h1>Load a learning quest</h1>
-        <p>Import a Tamamo JSON project or play the bundled sample quest.</p>
+    <BrandedHomeScreen
+      backHref="/"
+      title="Kuzunoha"
+      tagline="Enter a learning world and discover the path ahead."
+      panelEyebrow="Player Access"
+      panelTitle="Load a learning quest"
+      panelDescription="Import a Tamamo JSON project or play the bundled sample quest."
+    >
+      <div className="branded-home-actions">
         {latestSave && (
-          <button className="continue-card" onClick={() => loadProject(latestSave.project, latestSave.save)}>
+          <button className="branded-home-button" onClick={() => loadProject(latestSave.project, latestSave.save)}>
             <strong>Continue {latestSave.project.title}</strong>
             <span>{formatSaveTime(latestSave.save.updatedAt)}</span>
           </button>
         )}
-        <div className="boot-actions">
-          <button className="primary" onClick={() => loadProject(sampleProject)}>Play Sample Quest</button>
-          <label className="file-button">
+        <button className="branded-home-button primary" onClick={() => loadProject(sampleProject)}>Play Sample Quest</button>
+        <label className="branded-home-file-button">
             Import JSON
             <input
               type="file"
@@ -299,11 +302,10 @@ function BootScreen({
                   .catch((caught) => setError(caught instanceof Error ? caught.message : "Could not load file."));
               }}
             />
-          </label>
-        </div>
-        {error && <pre className="error">{error}</pre>}
-      </section>
-    </main>
+        </label>
+      </div>
+      {error && <pre className="branded-home-error">{error}</pre>}
+    </BrandedHomeScreen>
   );
 }
 
@@ -549,6 +551,7 @@ function PauseMenu({
         <div className="pause-actions">
           <button className="primary" autoFocus onClick={onResume}>Resume</button>
           <button onClick={onSave}>Save Game</button>
+          <a className="pause-link" href="/" data-route>Back to Kitsune</a>
         </div>
         {saveNotice && <p className="save-notice" role="status">{saveNotice}</p>}
         <details>
@@ -790,4 +793,10 @@ function runtimeSpritePreviewStyle(sprite: SpriteAsset | undefined): React.CSSPr
   };
 }
 
-createRoot(document.getElementById("root")!).render(<App />);
+export default function App() {
+  return (
+    <div className="kuzunoha-app">
+      <KuzunohaApplication />
+    </div>
+  );
+}

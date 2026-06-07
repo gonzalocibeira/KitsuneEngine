@@ -8,9 +8,8 @@
     "packages/*"
   ],
   "scripts": {
-    "dev:tamamo": "vite --host 127.0.0.1 --port 5173 --config apps/tamamo/vite.config.ts",
-    "dev:kuzunoha": "vite --host 127.0.0.1 --port 5174 --config apps/kuzunoha/vite.config.ts",
-    "build": "tsc -b && vite build --config apps/tamamo/vite.config.ts && vite build --config apps/kuzunoha/vite.config.ts",
+    "dev": "vite --host 127.0.0.1 --port 5173",
+    "build": "tsc -b && tsc --noEmit -p tsconfig.app.json && vite build",
     "test": "vitest run",
     "test:quest-smoke": "playwright test tests/smoke/quest.spec.ts"
   },
