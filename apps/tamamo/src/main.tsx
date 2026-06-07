@@ -16,6 +16,8 @@ import {
   type TilesetAsset,
   type TileValue
 } from "@kitsune/schema";
+import { placeholderAuthenticationService } from "./auth";
+import { LoginScreen } from "./LoginScreen";
 import "./styles.css";
 
 const draftKey = "tamamo:draft";
@@ -35,7 +37,7 @@ const rightPanelTabs: Array<{ id: RightPanelTab; label: string }> = [
   { id: "player", label: "Player" }
 ];
 
-function App() {
+function TamamoEditor() {
   const [project, setProject] = React.useState<KitsuneProject>(createEmptyProject);
   const [selectedMapId, setSelectedMapId] = React.useState("");
   const [layer, setLayer] = React.useState<EditorLayer>("ground");
@@ -678,6 +680,21 @@ function App() {
       )}
     </main>
   );
+}
+
+function App() {
+  const [authenticated, setAuthenticated] = React.useState(false);
+
+  if (!authenticated) {
+    return (
+      <LoginScreen
+        authenticationService={placeholderAuthenticationService}
+        onAuthenticated={() => setAuthenticated(true)}
+      />
+    );
+  }
+
+  return <TamamoEditor />;
 }
 
 function ConfirmationDialog({

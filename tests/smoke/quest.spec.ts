@@ -17,8 +17,26 @@ async function touchActions(page: import("@playwright/test").Page, actions: Arra
   }
 }
 
-test("Tamamo paints a newly created map", async ({ page }) => {
+async function loginToTamamo(page: import("@playwright/test").Page) {
   await page.goto("http://127.0.0.1:5173");
+  await page.getByRole("button", { name: "Login" }).click();
+}
+
+test("Tamamo requires placeholder login before opening the editor", async ({ page }) => {
+  await page.goto("http://127.0.0.1:5173");
+
+  await expect(page.getByRole("heading", { name: "Tamamo" })).toBeVisible();
+  await expect(page.getByLabel("Username")).toBeVisible();
+  await expect(page.getByLabel("Password")).toHaveAttribute("type", "password");
+  await expect(page.getByRole("button", { name: "Login" })).toBeVisible();
+  await expect(page.getByLabel("New map name")).toHaveCount(0);
+
+  await page.getByRole("button", { name: "Login" }).click();
+  await expect(page.getByLabel("New map name")).toBeVisible();
+});
+
+test("Tamamo paints a newly created map", async ({ page }) => {
+  await loginToTamamo(page);
   await page.getByLabel("New map name").fill("Paint Test");
   await page.getByRole("button", { name: "Create Map", exact: true }).click();
   await page.getByLabel("Layer").selectOption("collision");
@@ -37,7 +55,7 @@ test("Tamamo paints a newly created map", async ({ page }) => {
 });
 
 test("Tamamo starts empty and manages maps", async ({ page }) => {
-  await page.goto("http://127.0.0.1:5173");
+  await loginToTamamo(page);
 
   await expect(page.getByRole("heading", { name: "No maps exist yet" })).toBeVisible();
   await expect(page.getByText("Create a map to begin building your game world.")).toBeVisible();
@@ -67,7 +85,7 @@ test("Tamamo starts empty and manages maps", async ({ page }) => {
 });
 
 test("Tamamo confirms before replacing the project with sample content", async ({ page }) => {
-  await page.goto("http://127.0.0.1:5173");
+  await loginToTamamo(page);
   const title = page.locator(".title-input");
   await title.fill("Unsaved project");
 
@@ -88,7 +106,7 @@ test("Tamamo confirms before replacing the project with sample content", async (
 });
 
 test("Tamamo export loads and plays in Kuzunoha", async ({ page }) => {
-  await page.goto("http://127.0.0.1:5173");
+  await loginToTamamo(page);
   await page.getByRole("button", { name: "Sample", exact: true }).click();
   await page.getByRole("dialog", { name: "Load sample content?" }).getByRole("button", { name: "Load Sample" }).click();
   await expect(page.getByText("Project is export-ready.")).toBeVisible();
