@@ -130,6 +130,45 @@ test("Tamamo confirms before replacing the project with sample content", async (
   await expect(page.getByText("Sample quest loaded.")).toBeVisible();
 });
 
+test("Tamamo playtests unsaved changes without changing normal saves", async ({ page }) => {
+  await loginToTamamo(page);
+  await page.getByRole("button", { name: "Sample", exact: true }).click();
+  await page.getByRole("dialog", { name: "Load sample content?" }).getByRole("button", { name: "Load Sample" }).click();
+  await page.locator(".title-input").fill("Unsaved Playtest Project");
+  await page.evaluate(() => {
+    localStorage.setItem("kitsune-save:latest", "normal-latest-save");
+    localStorage.setItem("kitsune-save:untouched", "normal-project-save");
+  });
+  const storageBefore = await page.evaluate(() => JSON.stringify(localStorage));
+
+  await page.getByRole("button", { name: "Playtest" }).click();
+
+  await expect(page).toHaveURL(/\/kuzunoha\/playtest$/);
+  await expect(page.getByLabel("Playtest mode")).toBeVisible();
+  await expect(page.getByLabel("World status")).toBeVisible();
+  await touchActions(page, ["Right"]);
+  expect(await page.evaluate(() => JSON.stringify(localStorage))).toBe(storageBefore);
+
+  await page.keyboard.press("Escape");
+  const pauseMenu = page.getByRole("dialog", { name: "Pause menu" });
+  await expect(pauseMenu).toContainText("Unsaved Playtest Project");
+  await expect(pauseMenu.getByRole("button", { name: "Save Game" })).toHaveCount(0);
+  await expect(pauseMenu.getByRole("button", { name: "Return to Title" })).toHaveCount(0);
+  await pauseMenu.getByRole("link", { name: "Back to Editor" }).click();
+
+  await expect(page).toHaveURL(/\/tamamo$/);
+  await expect(page.locator(".title-input")).toHaveValue("Unsaved Playtest Project");
+  await expect(page.getByLabel("New map name")).toBeVisible();
+});
+
+test("Kuzunoha playtest route requires a Tamamo handoff", async ({ page }) => {
+  await page.goto("/kuzunoha/playtest");
+
+  await expect(page.getByText("Playtest Unavailable")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Return to Tamamo to start a playtest" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Back to Editor" })).toBeVisible();
+});
+
 test("Tamamo export loads and plays in Kuzunoha", async ({ page }) => {
   await loginToTamamo(page);
   await page.getByRole("button", { name: "Sample", exact: true }).click();

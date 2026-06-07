@@ -1,15 +1,16 @@
 import React from "react";
 import { createRoot } from "react-dom/client";
+import type { KitsuneProject } from "@kitsune/schema";
 import { BrandedHomeScreen } from "@kitsune/ui";
 import "./styles.css";
 
 const TamamoApp = React.lazy(() => import("../apps/tamamo/src/main"));
 const KuzunohaApp = React.lazy(() => import("../apps/kuzunoha/src/main"));
 
-type Route = "/" | "/tamamo" | "/kuzunoha" | "not-found";
+type Route = "/" | "/tamamo" | "/kuzunoha" | "/kuzunoha/playtest" | "not-found";
 
 function routeForPath(pathname: string): Route {
-  if (pathname === "/" || pathname === "/tamamo" || pathname === "/kuzunoha") return pathname;
+  if (pathname === "/" || pathname === "/tamamo" || pathname === "/kuzunoha" || pathname === "/kuzunoha/playtest") return pathname;
   return "not-found";
 }
 
@@ -20,6 +21,7 @@ function navigate(path: string) {
 
 function App() {
   const [route, setRoute] = React.useState<Route>(() => routeForPath(window.location.pathname));
+  const [playtestProject, setPlaytestProject] = React.useState<KitsuneProject | undefined>();
 
   React.useEffect(() => {
     function syncRoute() {
@@ -31,7 +33,13 @@ function App() {
   }, []);
 
   React.useEffect(() => {
-    document.title = route === "/" ? "Kitsune" : route === "not-found" ? "Not Found | Kitsune" : `${route.slice(1)[0].toUpperCase()}${route.slice(2)} | Kitsune`;
+    document.title = route === "/"
+      ? "Kitsune"
+      : route === "not-found"
+        ? "Not Found | Kitsune"
+        : route === "/kuzunoha/playtest"
+          ? "Playtest | Kitsune"
+          : `${route.slice(1)[0].toUpperCase()}${route.slice(2)} | Kitsune`;
   }, [route]);
 
   function handleNavigation(event: React.MouseEvent) {
@@ -45,8 +53,17 @@ function App() {
     <div onClick={handleNavigation}>
       <React.Suspense fallback={<LoadingScreen />}>
         {route === "/" && <Launcher />}
-        {route === "/tamamo" && <TamamoApp />}
-        {route === "/kuzunoha" && <KuzunohaApp />}
+        {route === "/tamamo" && (
+          <TamamoApp
+            initialProject={playtestProject}
+            onPlaytest={(project: KitsuneProject) => {
+              setPlaytestProject(structuredClone(project));
+              navigate("/kuzunoha/playtest");
+            }}
+          />
+        )}
+        {route === "/kuzunoha" && <KuzunohaApp mode="normal" />}
+        {route === "/kuzunoha/playtest" && <KuzunohaApp mode="playtest" playtestProject={playtestProject} />}
         {route === "not-found" && <NotFound />}
       </React.Suspense>
     </div>
