@@ -11,6 +11,8 @@ type RuntimeHandle = {
   project: KitsuneProject;
 };
 
+type RuntimeMode = "normal" | "playtest";
+
 type StoredGame = {
   storageVersion: 1;
   project: KitsuneProject;
@@ -19,7 +21,14 @@ type StoredGame = {
 
 const LATEST_SAVE_KEY = "kitsune-save:latest";
 
-function KuzunohaApplication() {
+function KuzunohaApplication({
+  mode,
+  playtestProject
+}: {
+  mode: RuntimeMode;
+  playtestProject?: KitsuneProject;
+}) {
+  const isPlaytest = mode === "playtest";
   const [handle, setHandle] = React.useState<RuntimeHandle | undefined>();
   const [snapshot, setSnapshot] = React.useState<RuntimeSnapshot | undefined>();
   const [error, setError] = React.useState("");
@@ -27,7 +36,7 @@ function KuzunohaApplication() {
   const [paused, setPaused] = React.useState(false);
   const [confirmTitle, setConfirmTitle] = React.useState(false);
   const [saveNotice, setSaveNotice] = React.useState("");
-  const [latestSave, setLatestSave] = React.useState<StoredGame | undefined>(() => loadLatestSave());
+  const [latestSave, setLatestSave] = React.useState<StoredGame | undefined>(() => isPlaytest ? undefined : loadLatestSave());
   const runtimeRef = React.useRef<GameRuntime | undefined>(undefined);
   const handleRef = React.useRef<RuntimeHandle | undefined>(undefined);
   const inputEnabledRef = React.useRef(true);
@@ -46,12 +55,16 @@ function KuzunohaApplication() {
     const active = handleRef.current;
     if (!active) return;
     setSnapshot(active.runtime.snapshot());
-    if (save) {
+    if (save && !isPlaytest) {
       const result = persistGame(active);
       if (result.ok) setLatestSave(result.stored);
       else setSaveNotice(result.message);
     }
-  }, []);
+  }, [isPlaytest]);
+
+  React.useEffect(() => {
+    if (isPlaytest && playtestProject) loadProject(playtestProject);
+  }, [isPlaytest, playtestProject]);
 
   React.useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
@@ -118,6 +131,7 @@ function KuzunohaApplication() {
   }
 
   function saveNow() {
+    if (isPlaytest) return;
     const active = handleRef.current;
     if (!active) return;
     const result = persistGame(active);
@@ -137,6 +151,9 @@ function KuzunohaApplication() {
   }
 
   if (!handle || !snapshot) {
+    if (isPlaytest) {
+      return <PlaytestUnavailableScreen error={error} isLoading={Boolean(playtestProject) && !error} />;
+    }
     return (
       <BootScreen
         error={error}
@@ -153,6 +170,12 @@ function KuzunohaApplication() {
   return (
     <main className="game-shell">
       <GameCanvas runtimeRef={runtimeRef} inputEnabledRef={inputEnabledRef} onRuntimeChange={refresh} project={handle.project} />
+      {isPlaytest && (
+        <aside className="playtest-banner" aria-label="Playtest mode">
+          <strong>Playtest Mode</strong>
+          <a href="/tamamo" data-route>Back to Editor</a>
+        </aside>
+      )}
       {canPause && !paused && <WorldHud snapshot={snapshot} />}
       {nearby && canPause && !paused && <section className="hud prompt">Press Space to inspect {nearby.name}</section>}
       {snapshot.overlay.type === "dialogue" && !paused && (
@@ -237,9 +260,30 @@ function KuzunohaApplication() {
             setPaused(false);
           }}
           onSave={saveNow}
+          isPlaytest={isPlaytest}
         />
       )}
     </main>
+  );
+}
+
+function PlaytestUnavailableScreen({ error, isLoading }: { error: string; isLoading: boolean }) {
+  return (
+    <BrandedHomeScreen
+      backHref="/tamamo"
+      title="Kuzunoha Playtest"
+      tagline="Test the current Tamamo project without changing player saves."
+      panelEyebrow={isLoading ? "Preparing Playtest" : "Playtest Unavailable"}
+      panelTitle={isLoading ? "Starting the current project" : "Return to Tamamo to start a playtest"}
+      panelDescription={isLoading
+        ? "Kuzunoha is preparing a temporary runtime session."
+        : "This playtest route requires a current project handed off from Tamamo in this browser tab."}
+    >
+      {error && <pre className="branded-home-error">{error}</pre>}
+      <div className="branded-home-actions">
+        <a className="branded-home-button primary" href="/tamamo" data-route>Back to Editor</a>
+      </div>
+    </BrandedHomeScreen>
   );
 }
 
@@ -523,6 +567,7 @@ class WorldScene extends Phaser.Scene {
 
 function PauseMenu({
   confirmTitle,
+  isPlaytest,
   project,
   saveNotice,
   snapshot,
@@ -533,6 +578,7 @@ function PauseMenu({
   onSave
 }: {
   confirmTitle: boolean;
+  isPlaytest: boolean;
   project: KitsuneProject;
   saveNotice: string;
   snapshot: RuntimeSnapshot;
@@ -550,8 +596,10 @@ function PauseMenu({
         <p className="map-name">{snapshot.currentMap.name}</p>
         <div className="pause-actions">
           <button className="primary" autoFocus onClick={onResume}>Resume</button>
-          <button onClick={onSave}>Save Game</button>
-          <a className="pause-link" href="/" data-route>Back to Kitsune</a>
+          {!isPlaytest && <button onClick={onSave}>Save Game</button>}
+          <a className="pause-link" href={isPlaytest ? "/tamamo" : "/"} data-route>
+            {isPlaytest ? "Back to Editor" : "Back to Kitsune"}
+          </a>
         </div>
         {saveNotice && <p className="save-notice" role="status">{saveNotice}</p>}
         <details>
@@ -570,7 +618,7 @@ function PauseMenu({
             <dt>Pause</dt><dd>Escape</dd>
           </dl>
         </details>
-        {!confirmTitle ? (
+        {!isPlaytest && (!confirmTitle ? (
           <button className="danger" onClick={onRequestTitle}>Return to Title</button>
         ) : (
           <div className="confirm-title">
@@ -578,7 +626,7 @@ function PauseMenu({
             <button className="danger" onClick={onConfirmTitle}>Return to Title</button>
             <button onClick={onCancelTitle}>Cancel</button>
           </div>
-        )}
+        ))}
       </div>
     </section>
   );
@@ -793,10 +841,16 @@ function runtimeSpritePreviewStyle(sprite: SpriteAsset | undefined): React.CSSPr
   };
 }
 
-export default function App() {
+export default function App({
+  mode = "normal",
+  playtestProject
+}: {
+  mode?: RuntimeMode;
+  playtestProject?: KitsuneProject;
+}) {
   return (
     <div className="kuzunoha-app">
-      <KuzunohaApplication />
+      <KuzunohaApplication mode={mode} playtestProject={playtestProject} />
     </div>
   );
 }

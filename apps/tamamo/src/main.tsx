@@ -36,9 +36,15 @@ const rightPanelTabs: Array<{ id: RightPanelTab; label: string }> = [
   { id: "player", label: "Player" }
 ];
 
-function TamamoEditor() {
-  const [project, setProject] = React.useState<KitsuneProject>(createEmptyProject);
-  const [selectedMapId, setSelectedMapId] = React.useState("");
+function TamamoEditor({
+  initialProject,
+  onPlaytest
+}: {
+  initialProject?: KitsuneProject;
+  onPlaytest?: (project: KitsuneProject) => void;
+}) {
+  const [project, setProject] = React.useState<KitsuneProject>(() => initialProject ? structuredClone(initialProject) : createEmptyProject());
+  const [selectedMapId, setSelectedMapId] = React.useState(() => initialProject?.start.mapId ?? "");
   const [layer, setLayer] = React.useState<EditorLayer>("ground");
   const [tileValue, setTileValue] = React.useState(1);
   const [brushTilesetKey, setBrushTilesetKey] = React.useState(Object.keys(sampleProject.assets.tilesets)[0] ?? "");
@@ -46,7 +52,7 @@ function TamamoEditor() {
   const [entityKind, setEntityKind] = React.useState<Entity["kind"]>("object");
   const [entityPlacementArmed, setEntityPlacementArmed] = React.useState(false);
   const [selectedEntityId, setSelectedEntityId] = React.useState("");
-  const [selectedSpawnId, setSelectedSpawnId] = React.useState("");
+  const [selectedSpawnId, setSelectedSpawnId] = React.useState(() => initialProject?.start.spawnId ?? "");
   const [rightTab, setRightTab] = React.useState<RightPanelTab>("entities");
   const [notice, setNotice] = React.useState("Empty project ready.");
   const [sampleConfirmationOpen, setSampleConfirmationOpen] = React.useState(false);
@@ -361,6 +367,9 @@ function TamamoEditor() {
           <button onClick={() => setSampleConfirmationOpen(true)}>Sample</button>
           <button onClick={saveDraft}>Save Draft</button>
           <button onClick={loadDraft}>Load Draft</button>
+          <button className="primary" onClick={() => onPlaytest?.(project)} disabled={!validation.ok || !onPlaytest}>
+            Playtest
+          </button>
           <label className="file-button">
             Import
             <input
@@ -682,8 +691,14 @@ function TamamoEditor() {
   );
 }
 
-export default function App() {
-  const [authenticated, setAuthenticated] = React.useState(false);
+export default function App({
+  initialProject,
+  onPlaytest
+}: {
+  initialProject?: KitsuneProject;
+  onPlaytest?: (project: KitsuneProject) => void;
+}) {
+  const [authenticated, setAuthenticated] = React.useState(() => Boolean(initialProject));
 
   return (
     <div className="tamamo-app">
@@ -693,7 +708,7 @@ export default function App() {
         onAuthenticated={() => setAuthenticated(true)}
       />
       ) : (
-        <TamamoEditor />
+        <TamamoEditor initialProject={initialProject} onPlaytest={onPlaytest} />
       )}
     </div>
   );
