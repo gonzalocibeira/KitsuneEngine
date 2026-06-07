@@ -240,7 +240,10 @@ export class GameRuntime {
       }
 
       if (command.type === "branch") {
-        const branchCommands = this.state.flags[command.flag] === command.expected ? command.then : command.else ?? [];
+        const conditionMet = command.condition.type === "battlePassed"
+          ? this.state.flags[this.requireBattle(command.condition.battleId).victoryFlag] === true
+          : this.state.inventoryKeyIds.includes(command.condition.keyId);
+        const branchCommands = conditionMet ? command.then : command.else ?? [];
         return this.runEvent(branchCommands);
       }
     }

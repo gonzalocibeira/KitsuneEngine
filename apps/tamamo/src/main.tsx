@@ -2,6 +2,7 @@ import React from "react";
 import { sampleProject } from "@kitsune/schema/sampleProject";
 import {
   createEmptyLayer,
+  MAX_BRANCH_NESTING_DEPTH,
   serializeProject,
   validateProject,
   type BattleDefinition,
@@ -1121,19 +1122,43 @@ function SpriteField({
 function EventEditor({
   commands,
   project,
-  updateCommands
+  updateCommands,
+  heading = "Event Blocks",
+  branchDepth = 0
 }: {
   commands: EventCommand[];
   project: KitsuneProject;
   updateCommands: (commands: EventCommand[]) => void;
+  heading?: string;
+  branchDepth?: number;
 }) {
   function updateAt(index: number, updater: (command: EventCommand) => EventCommand) {
     updateCommands(commands.map((command, current) => (current === index ? updater(command) : command)));
   }
 
+  function addBranch() {
+    if (project.battles[0]) {
+      updateCommands([...commands, {
+        type: "branch",
+        condition: { type: "battlePassed", battleId: project.battles[0].id },
+        then: [],
+        else: []
+      }]);
+      return;
+    }
+    if (project.keys[0]) {
+      updateCommands([...commands, {
+        type: "branch",
+        condition: { type: "hasKey", keyId: project.keys[0].id },
+        then: [],
+        else: []
+      }]);
+    }
+  }
+
   return (
-    <section className="event-editor">
-      <h3>Event Blocks</h3>
+    <section className="event-editor" data-branch-depth={branchDepth}>
+      <h3>{heading}</h3>
       {commands.map((command, index) => (
         <div className="event-block" key={`${command.type}-${index}`}>
           <strong>{command.type}</strong>
@@ -1172,6 +1197,72 @@ function EventEditor({
               </select>
             </div>
           )}
+          {command.type === "branch" && (
+            <>
+              <label>
+                Condition
+                <select
+                  aria-label="Branch condition"
+                  value={command.condition.type}
+                  onChange={(event) => updateAt(index, (draft) => {
+                    if (draft.type !== "branch") return draft;
+                    return event.target.value === "hasKey"
+                      ? { ...draft, condition: { type: "hasKey", keyId: project.keys[0]?.id ?? "" } }
+                      : { ...draft, condition: { type: "battlePassed", battleId: project.battles[0]?.id ?? "" } };
+                  })}
+                >
+                  <option value="battlePassed" disabled={project.battles.length === 0}>Battle already passed</option>
+                  <option value="hasKey" disabled={project.keys.length === 0}>Key is in inventory</option>
+                </select>
+              </label>
+              {command.condition.type === "battlePassed" && (
+                <label>
+                  Battle
+                  <select
+                    aria-label="Branch battle"
+                    value={command.condition.battleId}
+                    onChange={(event) => updateAt(index, (draft) => draft.type === "branch"
+                      ? { ...draft, condition: { type: "battlePassed", battleId: event.target.value } }
+                      : draft)}
+                  >
+                    {project.battles.map((battle) => <option key={battle.id} value={battle.id}>{battle.name}</option>)}
+                  </select>
+                </label>
+              )}
+              {command.condition.type === "hasKey" && (
+                <label>
+                  Key
+                  <select
+                    aria-label="Branch key"
+                    value={command.condition.keyId}
+                    onChange={(event) => updateAt(index, (draft) => draft.type === "branch"
+                      ? { ...draft, condition: { type: "hasKey", keyId: event.target.value } }
+                      : draft)}
+                  >
+                    {project.keys.map((key) => <option key={key.id} value={key.id}>{key.name}</option>)}
+                  </select>
+                </label>
+              )}
+              <div className="branch-path">
+                <EventEditor
+                  heading="Condition met"
+                  branchDepth={branchDepth + 1}
+                  project={project}
+                  commands={command.then}
+                  updateCommands={(thenCommands) => updateAt(index, (draft) => draft.type === "branch" ? { ...draft, then: thenCommands } : draft)}
+                />
+              </div>
+              <div className="branch-path">
+                <EventEditor
+                  heading="Condition not met"
+                  branchDepth={branchDepth + 1}
+                  project={project}
+                  commands={command.else ?? []}
+                  updateCommands={(elseCommands) => updateAt(index, (draft) => draft.type === "branch" ? { ...draft, else: elseCommands } : draft)}
+                />
+              </div>
+            </>
+          )}
           <button onClick={() => updateCommands(commands.filter((_, current) => current !== index))}>Remove</button>
         </div>
       ))}
@@ -1179,6 +1270,13 @@ function EventEditor({
         <button onClick={() => updateCommands([...commands, { type: "dialogue", text: "New dialogue." }])}>Dialogue</button>
         <button onClick={() => updateCommands([...commands, { type: "grantKnowledge", knowledgeId: project.knowledge[0]?.id ?? "" }])}>Knowledge</button>
         <button onClick={() => updateCommands([...commands, { type: "startBattle", battleId: project.battles[0]?.id ?? "" }])}>Battle</button>
+        <button
+          disabled={branchDepth >= MAX_BRANCH_NESTING_DEPTH || (project.battles.length === 0 && project.keys.length === 0)}
+          title={branchDepth >= MAX_BRANCH_NESTING_DEPTH ? `Branches are limited to ${MAX_BRANCH_NESTING_DEPTH} nested levels.` : undefined}
+          onClick={addBranch}
+        >
+          Branch
+        </button>
       </div>
     </section>
   );
@@ -1812,6 +1910,7 @@ function retargetKeyReferences(project: KitsuneProject, oldKeyId: string, nextKe
     for (const entity of map.entities) {
       entity.rewardKeyIds = (entity.rewardKeyIds ?? []).map((keyId) => keyId === oldKeyId ? nextKeyId : keyId);
       if (entity.lock?.keyId === oldKeyId) entity.lock.keyId = nextKeyId;
+      entity.event = retargetKeyCommands(entity.event, oldKeyId, nextKeyId);
     }
   }
   for (const battle of project.battles) {
@@ -1820,17 +1919,45 @@ function retargetKeyReferences(project: KitsuneProject, oldKeyId: string, nextKe
   }
 }
 
+function retargetKeyCommands(commands: EventCommand[], oldKeyId: string, nextKeyId: string): EventCommand[] {
+  return commands.map((command) => {
+    if (command.type !== "branch") return command;
+    return {
+      ...command,
+      condition: command.condition.type === "hasKey" && command.condition.keyId === oldKeyId
+        ? { type: "hasKey", keyId: nextKeyId }
+        : command.condition,
+      then: retargetKeyCommands(command.then, oldKeyId, nextKeyId),
+      else: retargetKeyCommands(command.else ?? [], oldKeyId, nextKeyId)
+    };
+  });
+}
+
 function removeKeyReferences(project: KitsuneProject, keyId: string) {
   for (const map of project.maps) {
     for (const entity of map.entities) {
       entity.rewardKeyIds = (entity.rewardKeyIds ?? []).filter((candidate) => candidate !== keyId);
       if (entity.lock?.keyId === keyId) delete entity.lock;
+      entity.event = removeKeyCommands(entity.event, keyId);
     }
   }
   for (const battle of project.battles) {
     battle.rewardKeyIds = (battle.rewardKeyIds ?? []).filter((candidate) => candidate !== keyId);
     if (battle.lock?.keyId === keyId) delete battle.lock;
   }
+}
+
+function removeKeyCommands(commands: EventCommand[], keyId: string): EventCommand[] {
+  return commands.flatMap((command) => {
+    if (command.type !== "branch") return [command];
+    if (command.condition.type === "hasKey" && command.condition.keyId === keyId) return [] as EventCommand[];
+    const nextCommand: EventCommand = {
+      ...command,
+      then: removeKeyCommands(command.then, keyId),
+      else: removeKeyCommands(command.else ?? [], keyId)
+    };
+    return [nextCommand];
+  });
 }
 
 function noteDeleteBlockedReason(project: KitsuneProject, knowledgeId: string | undefined): string | undefined {
@@ -1871,6 +1998,7 @@ function removeBattleCommands(commands: EventCommand[], battleId: string): Event
   return commands.flatMap((command) => {
     if (command.type === "startBattle" && command.battleId === battleId) return [] as EventCommand[];
     if (command.type === "branch") {
+      if (command.condition.type === "battlePassed" && command.condition.battleId === battleId) return [];
       const nextCommand: EventCommand = {
         ...command,
         then: removeBattleCommands(command.then, battleId),

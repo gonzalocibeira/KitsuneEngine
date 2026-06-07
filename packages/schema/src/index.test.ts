@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { sampleProject } from "./sampleProject";
-import { validateProject } from "./index";
+import { MAX_BRANCH_NESTING_DEPTH, validateProject, type EventCommand } from "./index";
 
 describe("KitsuneProject schema", () => {
   it("accepts the bundled sample project", () => {
@@ -84,6 +84,45 @@ describe("KitsuneProject schema", () => {
 
     expect(result.ok).toBe(false);
     expect(result.issues.join("\n")).toContain("missing");
+  });
+
+  it("validates battle and key branch conditions", () => {
+    const valid = structuredClone(sampleProject);
+    valid.maps[0].entities[0].event.push({
+      type: "branch",
+      condition: { type: "hasKey", keyId: valid.keys[0].id },
+      then: [],
+      else: []
+    });
+    expect(validateProject(valid).ok).toBe(true);
+
+    const broken = structuredClone(valid);
+    const branch = broken.maps[0].entities[0].event.at(-1);
+    if (branch?.type !== "branch") throw new Error("Missing branch");
+    branch.condition = { type: "battlePassed", battleId: "missing-battle" };
+
+    const result = validateProject(broken);
+    expect(result.ok).toBe(false);
+    expect(result.issues.join("\n")).toContain('checks missing battle "missing-battle"');
+  });
+
+  it("rejects branches nested beyond the editor limit", () => {
+    const project = structuredClone(sampleProject);
+    let commands: EventCommand[] = [{ type: "dialogue", text: "Deepest event." }];
+    for (let depth = 0; depth <= MAX_BRANCH_NESTING_DEPTH; depth += 1) {
+      commands = [{
+        type: "branch",
+        condition: { type: "battlePassed", battleId: project.battles[0].id },
+        then: commands,
+        else: []
+      }];
+    }
+    project.maps[0].entities[0].event = commands;
+
+    const result = validateProject(project);
+
+    expect(result.ok).toBe(false);
+    expect(result.issues.join("\n")).toContain(`maximum branch nesting depth of ${MAX_BRANCH_NESTING_DEPTH}`);
   });
 
   it("reports duplicate map ids and names", () => {

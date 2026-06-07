@@ -172,7 +172,7 @@ label {
 
 .workspace {
   display: grid;
-  grid-template-columns: 280px minmax(460px, 1fr) 340px;
+  grid-template-columns: 280px minmax(460px, 1fr) 420px;
   min-height: calc(100vh - 78px);
 }
 
@@ -200,7 +200,7 @@ label {
 
 .map-stage {
   display: grid;
-  place-items: center;
+  place-items: start center;
   overflow: auto;
   padding: 1.25rem;
   background: #111715;
@@ -627,12 +627,22 @@ details {
   background: #202b27;
 }
 
+.branch-path {
+  border-left: 3px solid #52675f;
+  padding-left: 0.65rem;
+}
+
+.branch-path .event-editor > h3 {
+  margin: 0;
+  font-size: 0.9rem;
+}
+
 summary {
   cursor: pointer;
   font-weight: 700;
 }
 
-@media (max-width: 1050px) {
+@media (max-width: 1160px) {
   .workspace {
     grid-template-columns: 1fr;
   }
