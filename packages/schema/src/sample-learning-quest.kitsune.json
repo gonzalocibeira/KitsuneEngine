@@ -855,8 +855,10 @@
           "event": [
             {
               "type": "branch",
-              "flag": "trial_complete",
-              "expected": true,
+              "condition": {
+                "type": "battlePassed",
+                "battleId": "memory-trial"
+              },
               "then": [
                 {
                   "type": "dialogue",

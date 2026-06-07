@@ -130,6 +130,42 @@ test("Tamamo confirms before replacing the project with sample content", async (
   await expect(page.getByText("Sample quest loaded.")).toBeVisible();
 });
 
+test("Tamamo edits recursive battle and key branches", async ({ page }) => {
+  await loginToTamamo(page);
+  await page.getByRole("button", { name: "Sample", exact: true }).click();
+  await page.getByRole("dialog", { name: "Load sample content?" }).getByRole("button", { name: "Load Sample" }).click();
+
+  await page.locator('select:has(option[value="trial-stone"])').selectOption("trial-stone");
+  await expect(page.getByLabel("Branch condition").first()).toHaveValue("battlePassed");
+  await expect(page.getByLabel("Branch battle").first()).toHaveValue("memory-trial");
+  await expect(page.getByRole("heading", { name: "Condition met" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Condition not met" })).toBeVisible();
+
+  await page.getByLabel("Branch condition").first().selectOption("hasKey");
+  await expect(page.getByLabel("Branch key").first()).toHaveValue("annex-key");
+  await page.locator(".branch-path").first().getByRole("button", { name: "Dialogue" }).click();
+  await page.locator(".branch-path").first().locator("textarea").last().fill("The branch editor works.");
+  await page.locator(".right-panel .stack > .event-editor > .button-row > button").filter({ hasText: "Branch" }).click();
+  await expect(page.getByLabel("Branch condition")).toHaveCount(2);
+  const levelOnePath = page.locator('.event-editor[data-branch-depth="1"]').first();
+  await levelOnePath.locator(":scope > .button-row > button").filter({ hasText: "Branch" }).click();
+  const levelTwoPath = page.locator('.event-editor[data-branch-depth="2"]').first();
+  await levelTwoPath.locator(":scope > .button-row > button").filter({ hasText: "Branch" }).click();
+  const levelThreeBranchButton = page.locator('.event-editor[data-branch-depth="3"]').first().locator(":scope > .button-row > button").filter({ hasText: "Branch" });
+  await expect(levelThreeBranchButton).toBeDisabled();
+  await expect(levelThreeBranchButton).toHaveAttribute("title", "Branches are limited to 3 nested levels.");
+
+  const downloadPromise = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Export JSON" }).click();
+  const download = await downloadPromise;
+  const exportedPath = await download.path();
+  const exported = JSON.parse(await readFile(exportedPath!, "utf8"));
+  const trialStone = exported.maps[0].entities.find((entity: { id: string }) => entity.id === "trial-stone");
+  expect(trialStone.event[0].condition).toEqual({ type: "hasKey", keyId: "annex-key" });
+  expect(trialStone.event[0].then).toContainEqual({ type: "dialogue", text: "The branch editor works." });
+  expect(trialStone.event.at(-1).condition).toEqual({ type: "battlePassed", battleId: "memory-trial" });
+});
+
 test("Tamamo playtests unsaved changes without changing normal saves", async ({ page }) => {
   await loginToTamamo(page);
   await page.getByRole("button", { name: "Sample", exact: true }).click();

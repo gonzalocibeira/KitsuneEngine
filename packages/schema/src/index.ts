@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 export const SCHEMA_VERSION = 0;
+export const MAX_BRANCH_NESTING_DEPTH = 3;
 
 export const positionSchema = z.object({
   x: z.number().int().nonnegative(),
@@ -26,13 +27,28 @@ export const lockRequirementSchema = z.object({
   missingKeyMessage: z.string().min(1)
 });
 
+export type BranchCondition =
+  | { type: "battlePassed"; battleId: string }
+  | { type: "hasKey"; keyId: string };
+
 export type EventCommand =
   | { type: "dialogue"; speaker?: string; text: string }
   | { type: "grantKnowledge"; knowledgeId: string }
   | { type: "setFlag"; flag: string; value: boolean }
   | { type: "transferMap"; mapId: string; spawnId: string }
   | { type: "startBattle"; battleId: string }
-  | { type: "branch"; flag: string; expected: boolean; then: EventCommand[]; else?: EventCommand[] };
+  | { type: "branch"; condition: BranchCondition; then: EventCommand[]; else?: EventCommand[] };
+
+export const branchConditionSchema = z.discriminatedUnion("type", [
+  z.object({
+    type: z.literal("battlePassed"),
+    battleId: z.string().min(1)
+  }),
+  z.object({
+    type: z.literal("hasKey"),
+    keyId: z.string().min(1)
+  })
+]);
 
 export const eventCommandSchema: z.ZodType<EventCommand> = z.lazy(() =>
   z.discriminatedUnion("type", [
@@ -61,8 +77,7 @@ export const eventCommandSchema: z.ZodType<EventCommand> = z.lazy(() =>
     }),
     z.object({
       type: z.literal("branch"),
-      flag: z.string().min(1),
-      expected: z.boolean(),
+      condition: branchConditionSchema,
       then: z.array(eventCommandSchema),
       else: z.array(eventCommandSchema).default([])
     })
@@ -276,7 +291,7 @@ export function validateReferences(project: KitsuneProject): string[] {
         issues.push(`${map.id}.${entity.id} references missing sprite "${entity.spriteKey}"`);
       }
       validateKeyReferences(entity.rewardKeyIds, entity.lock?.keyId, keyIds, issues, `${map.id}.${entity.id}`);
-      validateCommands(entity.event, { issues, mapIds, knowledgeIds, battleIds, context: `${map.id}.${entity.id}` });
+      validateCommands(entity.event, { issues, mapIds, knowledgeIds, battleIds, keyIds, context: `${map.id}.${entity.id}` });
     }
   }
 
@@ -316,8 +331,10 @@ function validateCommands(
     mapIds: Set<string>;
     knowledgeIds: Set<string>;
     battleIds: Set<string>;
+    keyIds: Set<string>;
     context: string;
-  }
+  },
+  branchDepth = 0
 ) {
   for (const command of commands) {
     if (command.type === "grantKnowledge" && !refs.knowledgeIds.has(command.knowledgeId)) {
@@ -330,8 +347,17 @@ function validateCommands(
       refs.issues.push(`${refs.context} transfers to missing map "${command.mapId}"`);
     }
     if (command.type === "branch") {
-      validateCommands(command.then, refs);
-      validateCommands(command.else ?? [], refs);
+      if (branchDepth >= MAX_BRANCH_NESTING_DEPTH) {
+        refs.issues.push(`${refs.context} exceeds maximum branch nesting depth of ${MAX_BRANCH_NESTING_DEPTH}`);
+      }
+      if (command.condition.type === "battlePassed" && !refs.battleIds.has(command.condition.battleId)) {
+        refs.issues.push(`${refs.context} checks missing battle "${command.condition.battleId}"`);
+      }
+      if (command.condition.type === "hasKey" && !refs.keyIds.has(command.condition.keyId)) {
+        refs.issues.push(`${refs.context} checks missing key "${command.condition.keyId}"`);
+      }
+      validateCommands(command.then, refs, branchDepth + 1);
+      validateCommands(command.else ?? [], refs, branchDepth + 1);
     }
   }
 }

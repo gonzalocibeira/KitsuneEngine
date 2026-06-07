@@ -102,6 +102,55 @@ describe("GameRuntime", () => {
     expect(runtime.snapshot().overlay.type).toBe("battle");
   });
 
+  it("branches on whether a battle has already been passed", () => {
+    const project = structuredClone(sampleProject);
+    project.battles[0].requiredKnowledgeIds = ["observe"];
+    const runtime = new GameRuntime(project);
+
+    runtime.interactAt({ x: 10, y: 7 });
+    expect(runtime.snapshot().overlay.type).toBe("battleConfirmation");
+    runtime.confirmBattle();
+    const battle = runtime.snapshot().overlay;
+    if (battle.type !== "battle") throw new Error("Battle did not start");
+    runtime.answerBattle(battle.battle.answer);
+    runtime.closeOverlay();
+
+    runtime.interactAt({ x: 10, y: 7 });
+    expect(runtime.snapshot().overlay).toEqual({
+      type: "dialogue",
+      messages: [{ speaker: undefined, text: "The trial stone is quiet. You already passed." }]
+    });
+  });
+
+  it("branches on whether a key is in the inventory", () => {
+    const project = structuredClone(sampleProject);
+    const archivist = project.maps[0].entities.find((entity) => entity.id === "guide");
+    if (!archivist) throw new Error("Missing archivist");
+    archivist.event = [{
+      type: "branch",
+      condition: { type: "hasKey", keyId: "annex-key" },
+      then: [{ type: "dialogue", text: "The key is yours." }],
+      else: [{ type: "dialogue", text: "Find the key." }]
+    }];
+    const runtime = new GameRuntime(project);
+
+    runtime.interactAt(archivist.position);
+    expect(runtime.snapshot().overlay).toEqual({
+      type: "dialogue",
+      messages: [{ speaker: undefined, text: "Find the key." }]
+    });
+
+    runtime.closeOverlay();
+    runtime.interactAt({ x: 3, y: 2 });
+    runtime.closeOverlay();
+    runtime.closeOverlay();
+    runtime.interactAt(archivist.position);
+    expect(runtime.snapshot().overlay).toEqual({
+      type: "dialogue",
+      messages: [{ speaker: undefined, text: "The key is yours." }]
+    });
+  });
+
   it("starts with full player life and consumes every shuffled question", () => {
     const project = structuredClone(sampleProject);
     project.player.maxHp = 5;
