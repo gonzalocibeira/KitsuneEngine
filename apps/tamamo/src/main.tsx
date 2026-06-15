@@ -2,12 +2,17 @@ import React from "react";
 import { sampleProject } from "@kitsune/schema/sampleProject";
 import {
   createEmptyLayer,
+  ENTITY_ROLE_POLICIES,
+  ENTITY_KINDS,
+  isEventCommandAllowed,
   MAX_BRANCH_NESTING_DEPTH,
   serializeProject,
   validateProject,
   type BattleDefinition,
   type Entity,
+  type EntityKind,
   type EventCommand,
+  type EventCommandType,
   type KeyDefinition,
   type KitsuneMap,
   type KitsuneProject,
@@ -21,7 +26,11 @@ import { LoginScreen } from "./LoginScreen";
 import "./styles.css";
 
 const draftKey = "tamamo:draft";
-const entityKinds: Entity["kind"][] = ["npc", "object", "door", "trigger"];
+const rightPanelWidthKey = "tamamo:right-panel-width";
+const defaultRightPanelWidth = 420;
+const minRightPanelWidth = 360;
+const maxRightPanelWidth = 720;
+const entityKinds: EntityKind[] = [...ENTITY_KINDS];
 
 type EditorLayer = "ground" | "decor" | "collision";
 type ToolMode = "paint" | "spawn";
@@ -60,8 +69,10 @@ function TamamoEditor({
   const [mapToDeleteId, setMapToDeleteId] = React.useState("");
   const [newMapName, setNewMapName] = React.useState("");
   const [mapNameDraft, setMapNameDraft] = React.useState("");
+  const [rightPanelWidth, setRightPanelWidth] = React.useState(() => loadRightPanelWidth());
   const paintingRef = React.useRef(false);
   const lastPaintedCellRef = React.useRef("");
+  const rightPanelResizeRef = React.useRef<{ startX: number; startWidth: number } | undefined>(undefined);
 
   const selectedMap = project.maps.find((map) => map.id === selectedMapId) ?? project.maps[0];
   const spawnIds = Object.keys(selectedMap?.spawns ?? {});
@@ -96,6 +107,42 @@ function TamamoEditor({
       window.removeEventListener("pointercancel", stopPainting);
       window.removeEventListener("blur", stopPainting);
     };
+  }, []);
+
+  React.useEffect(() => {
+    function resizeRightPanel(event: PointerEvent) {
+      const resize = rightPanelResizeRef.current;
+      if (!resize) return;
+      setRightPanelWidth(clampRightPanelWidth(resize.startWidth + resize.startX - event.clientX));
+    }
+
+    function stopResizingRightPanel() {
+      if (!rightPanelResizeRef.current) return;
+      rightPanelResizeRef.current = undefined;
+      document.body.classList.remove("resizing-right-panel");
+    }
+
+    window.addEventListener("pointermove", resizeRightPanel);
+    window.addEventListener("pointerup", stopResizingRightPanel);
+    window.addEventListener("pointercancel", stopResizingRightPanel);
+    return () => {
+      window.removeEventListener("pointermove", resizeRightPanel);
+      window.removeEventListener("pointerup", stopResizingRightPanel);
+      window.removeEventListener("pointercancel", stopResizingRightPanel);
+      document.body.classList.remove("resizing-right-panel");
+    };
+  }, []);
+
+  React.useEffect(() => {
+    localStorage.setItem(rightPanelWidthKey, String(rightPanelWidth));
+  }, [rightPanelWidth]);
+
+  React.useEffect(() => {
+    function fitRightPanelToViewport() {
+      setRightPanelWidth((width) => clampRightPanelWidth(width));
+    }
+    window.addEventListener("resize", fitRightPanelToViewport);
+    return () => window.removeEventListener("resize", fitRightPanelToViewport);
   }, []);
 
   function updateProject(updater: (project: KitsuneProject) => KitsuneProject) {
@@ -186,7 +233,7 @@ function TamamoEditor({
         name: `New ${entityKind}`,
         kind: entityKind,
         position: { x, y },
-        collidable: true,
+        collidable: ENTITY_ROLE_POLICIES[entityKind].defaultCollidable,
         spriteKey: entityKind,
         event: defaultEvent(entityKind, project),
         rewardKeyIds: []
@@ -388,7 +435,10 @@ function TamamoEditor({
         </div>
       </header>
 
-      <section className="workspace">
+      <section
+        className="workspace"
+        style={{ "--right-panel-width": `${rightPanelWidth}px` } as React.CSSProperties}
+      >
         <aside className="panel left-panel">
           <h2>Project</h2>
           <label>
@@ -613,6 +663,28 @@ function TamamoEditor({
             </section>
           )}
         </section>
+
+        <div
+          className="right-panel-resizer"
+          role="separator"
+          aria-label="Resize right panel"
+          aria-orientation="vertical"
+          aria-valuemin={minRightPanelWidth}
+          aria-valuemax={maxRightPanelWidth}
+          aria-valuenow={rightPanelWidth}
+          tabIndex={0}
+          onDoubleClick={() => setRightPanelWidth(defaultRightPanelWidth)}
+          onKeyDown={(event) => {
+            if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+            event.preventDefault();
+            setRightPanelWidth((width) => clampRightPanelWidth(width + (event.key === "ArrowLeft" ? 20 : -20)));
+          }}
+          onPointerDown={(event) => {
+            event.preventDefault();
+            rightPanelResizeRef.current = { startX: event.clientX, startWidth: rightPanelWidth };
+            document.body.classList.add("resizing-right-panel");
+          }}
+        />
 
         <aside className="panel right-panel">
           <nav className="tab-strip" aria-label="Editor sections">
@@ -930,6 +1002,11 @@ function EntityPanel({
   deleteEntity: () => void;
 }) {
   const currentSprite = entity?.spriteKey ? project.assets.sprites[entity.spriteKey] : undefined;
+  const rolePolicy = entity ? ENTITY_ROLE_POLICIES[entity.kind] : undefined;
+  const incompatibleRoleMessages = entity ? entityKinds.flatMap((kind) => {
+    const invalidCommands = invalidCommandTypesForKind(entity.event, kind);
+    return invalidCommands.length > 0 ? [`${kind}: remove ${invalidCommands.join(", ")}`] : [];
+  }) : [];
 
   function setSpriteKey(spriteKey: string | undefined) {
     updateEntity((draft) => {
@@ -968,10 +1045,28 @@ function EntityPanel({
           </label>
           <label>
             Kind
-            <select value={entity.kind} onChange={(event) => updateEntity((draft) => { draft.kind = event.target.value as Entity["kind"]; })}>
-              {entityKinds.map((kind) => <option key={kind} value={kind}>{kind}</option>)}
+            <select
+              aria-label="Entity kind"
+              value={entity.kind}
+              onChange={(event) => updateEntity((draft) => {
+                const kind = event.target.value as EntityKind;
+                draft.kind = kind;
+                if (ENTITY_ROLE_POLICIES[kind].collision === "fixed") {
+                  draft.collidable = ENTITY_ROLE_POLICIES[kind].defaultCollidable;
+                }
+              })}
+            >
+              {entityKinds.map((kind) => (
+                <option key={kind} value={kind} disabled={invalidCommandTypesForKind(entity.event, kind).length > 0}>
+                  {kind}
+                </option>
+              ))}
             </select>
           </label>
+          {incompatibleRoleMessages.length > 0 && <p className="muted">Unavailable kinds: {incompatibleRoleMessages.join("; ")}.</p>}
+          <p className="muted">
+            {rolePolicy?.activation === "enter" ? "Activates when the player enters its tile." : "Activates when the player interacts with it."}
+          </p>
           <SpriteField
             label="Sprite"
             project={project}
@@ -993,11 +1088,18 @@ function EntityPanel({
             <input
               type="checkbox"
               checked={entity.collidable !== false}
+              disabled={rolePolicy?.collision === "fixed"}
               onChange={(event) => updateEntity((draft) => { draft.collidable = event.target.checked; })}
             />
             Blocks player movement
           </label>
-          <EventEditor project={project} commands={entity.event} updateCommands={(commands) => updateEntity((draft) => { draft.event = commands; })} />
+          {rolePolicy?.collision === "fixed" && <p className="muted">Triggers never block player movement.</p>}
+          <EventEditor
+            project={project}
+            entityKind={entity.kind}
+            commands={entity.event}
+            updateCommands={(commands) => updateEntity((draft) => { draft.event = commands; })}
+          />
           <KeyProgressionFields
             project={project}
             rewardKeyIds={entity.rewardKeyIds ?? []}
@@ -1122,16 +1224,20 @@ function SpriteField({
 function EventEditor({
   commands,
   project,
+  entityKind,
   updateCommands,
   heading = "Event Blocks",
   branchDepth = 0
 }: {
   commands: EventCommand[];
   project: KitsuneProject;
+  entityKind?: EntityKind;
   updateCommands: (commands: EventCommand[]) => void;
   heading?: string;
   branchDepth?: number;
 }) {
+  const canAdd = (commandType: EventCommandType) => !entityKind || isEventCommandAllowed(entityKind, commandType);
+
   function updateAt(index: number, updater: (command: EventCommand) => EventCommand) {
     updateCommands(commands.map((command, current) => (current === index ? updater(command) : command)));
   }
@@ -1177,6 +1283,18 @@ function EventEditor({
             <select value={command.battleId} onChange={(event) => updateAt(index, () => ({ type: "startBattle", battleId: event.target.value }))}>
               {project.battles.map((battle) => <option key={battle.id} value={battle.id}>{battle.name}</option>)}
             </select>
+          )}
+          {command.type === "setFlag" && (
+            <>
+              <label>
+                Flag
+                <input value={command.flag} onChange={(event) => updateAt(index, (draft) => draft.type === "setFlag" ? { ...draft, flag: event.target.value } : draft)} />
+              </label>
+              <label className="checkbox-row">
+                <input type="checkbox" checked={command.value} onChange={(event) => updateAt(index, (draft) => draft.type === "setFlag" ? { ...draft, value: event.target.checked } : draft)} />
+                Enabled
+              </label>
+            </>
           )}
           {command.type === "transferMap" && (
             <div className="coord-row">
@@ -1248,6 +1366,7 @@ function EventEditor({
                   heading="Condition met"
                   branchDepth={branchDepth + 1}
                   project={project}
+                  entityKind={entityKind}
                   commands={command.then}
                   updateCommands={(thenCommands) => updateAt(index, (draft) => draft.type === "branch" ? { ...draft, then: thenCommands } : draft)}
                 />
@@ -1257,6 +1376,7 @@ function EventEditor({
                   heading="Condition not met"
                   branchDepth={branchDepth + 1}
                   project={project}
+                  entityKind={entityKind}
                   commands={command.else ?? []}
                   updateCommands={(elseCommands) => updateAt(index, (draft) => draft.type === "branch" ? { ...draft, else: elseCommands } : draft)}
                 />
@@ -1267,11 +1387,22 @@ function EventEditor({
         </div>
       ))}
       <div className="button-row">
-        <button onClick={() => updateCommands([...commands, { type: "dialogue", text: "New dialogue." }])}>Dialogue</button>
-        <button onClick={() => updateCommands([...commands, { type: "grantKnowledge", knowledgeId: project.knowledge[0]?.id ?? "" }])}>Knowledge</button>
-        <button onClick={() => updateCommands([...commands, { type: "startBattle", battleId: project.battles[0]?.id ?? "" }])}>Battle</button>
+        <button disabled={!canAdd("dialogue")} onClick={() => updateCommands([...commands, { type: "dialogue", text: "New dialogue." }])}>Dialogue</button>
+        <button disabled={!canAdd("grantKnowledge") || project.knowledge.length === 0} onClick={() => updateCommands([...commands, { type: "grantKnowledge", knowledgeId: project.knowledge[0]?.id ?? "" }])}>Knowledge</button>
+        <button disabled={!canAdd("setFlag")} onClick={() => updateCommands([...commands, { type: "setFlag", flag: "new_flag", value: true }])}>Flag</button>
         <button
-          disabled={branchDepth >= MAX_BRANCH_NESTING_DEPTH || (project.battles.length === 0 && project.keys.length === 0)}
+          disabled={!canAdd("transferMap") || project.maps.length === 0}
+          onClick={() => updateCommands([...commands, {
+            type: "transferMap",
+            mapId: project.maps[0]?.id ?? "",
+            spawnId: Object.keys(project.maps[0]?.spawns ?? {})[0] ?? ""
+          }])}
+        >
+          Transfer
+        </button>
+        <button disabled={!canAdd("startBattle") || project.battles.length === 0} onClick={() => updateCommands([...commands, { type: "startBattle", battleId: project.battles[0]?.id ?? "" }])}>Battle</button>
+        <button
+          disabled={!canAdd("branch") || branchDepth >= MAX_BRANCH_NESTING_DEPTH || (project.battles.length === 0 && project.keys.length === 0)}
           title={branchDepth >= MAX_BRANCH_NESTING_DEPTH ? `Branches are limited to ${MAX_BRANCH_NESTING_DEPTH} nested levels.` : undefined}
           onClick={addBranch}
         >
@@ -1761,6 +1892,31 @@ function defaultEvent(kind: Entity["kind"], project: KitsuneProject): EventComma
   if (kind === "object" && project.knowledge[0]) return [{ type: "grantKnowledge", knowledgeId: project.knowledge[0].id }];
   if (kind !== "npc") return [];
   return [{ type: "dialogue", speaker: "NPC", text: "New dialogue." }];
+}
+
+function invalidCommandTypesForKind(commands: EventCommand[], kind: EntityKind): EventCommandType[] {
+  const invalid = new Set<EventCommandType>();
+  function visit(nestedCommands: EventCommand[]) {
+    for (const command of nestedCommands) {
+      if (!isEventCommandAllowed(kind, command.type)) invalid.add(command.type);
+      if (command.type === "branch") {
+        visit(command.then);
+        visit(command.else ?? []);
+      }
+    }
+  }
+  visit(commands);
+  return [...invalid];
+}
+
+function loadRightPanelWidth(): number {
+  const storedWidth = Number(localStorage.getItem(rightPanelWidthKey));
+  return Number.isFinite(storedWidth) && storedWidth > 0 ? clampRightPanelWidth(storedWidth) : defaultRightPanelWidth;
+}
+
+function clampRightPanelWidth(width: number): number {
+  const viewportLimit = typeof window === "undefined" ? maxRightPanelWidth : window.innerWidth - 280 - 460 - 8;
+  return Math.max(minRightPanelWidth, Math.min(maxRightPanelWidth, viewportLimit, Math.round(width)));
 }
 
 function createEmptyProject(): KitsuneProject {

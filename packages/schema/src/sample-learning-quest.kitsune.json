@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 0,
+  "schemaVersion": 1,
   "id": "sample-learning-quest",
   "title": "The Archivist's Trial",
   "version": "0.1.0",
@@ -851,6 +851,7 @@
             "x": 10,
             "y": 7
           },
+          "collidable": false,
           "spriteKey": "sprite-kenney-tiny-dungeon-20",
           "event": [
             {
