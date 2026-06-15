@@ -778,7 +778,9 @@ function findNearbyEntity(snapshot: RuntimeSnapshot): Entity | undefined {
     { x: snapshot.player.x, y: snapshot.player.y + 1 },
     { x: snapshot.player.x - 1, y: snapshot.player.y }
   ];
-  return snapshot.currentMap.entities.find((entity) => positions.some((position) => position.x === entity.position.x && position.y === entity.position.y));
+  return snapshot.currentMap.entities.find((entity) =>
+    entity.kind !== "trigger" && positions.some((position) => position.x === entity.position.x && position.y === entity.position.y)
+  );
 }
 
 function tileColor(tile: number): number {

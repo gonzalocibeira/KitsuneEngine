@@ -109,6 +109,30 @@ test("Tamamo starts empty and manages maps", async ({ page }) => {
   await expect(page.getByRole("heading", { name: "No maps exist yet" })).toBeVisible();
 });
 
+test("Tamamo resizes and persists the right editor panel width", async ({ page }) => {
+  await loginToTamamo(page);
+  const panel = page.locator(".right-panel");
+  const resizer = page.getByRole("separator", { name: "Resize right panel" });
+  const initialPanel = await panel.boundingBox();
+  const initialResizer = await resizer.boundingBox();
+  expect(initialPanel).toBeTruthy();
+  expect(initialResizer).toBeTruthy();
+
+  await page.mouse.move(initialResizer!.x + initialResizer!.width / 2, initialResizer!.y + 100);
+  await page.mouse.down();
+  await page.mouse.move(initialResizer!.x - 80, initialResizer!.y + 100);
+  await page.mouse.up();
+
+  const resizedPanel = await panel.boundingBox();
+  expect(resizedPanel!.width).toBeGreaterThan(initialPanel!.width + 60);
+  await expect(resizer).toHaveAttribute("aria-valuenow", String(Math.round(resizedPanel!.width)));
+
+  await page.reload();
+  await page.getByRole("button", { name: "Login" }).click();
+  const persistedPanel = await panel.boundingBox();
+  expect(persistedPanel!.width).toBeCloseTo(resizedPanel!.width, 0);
+});
+
 test("Tamamo confirms before replacing the project with sample content", async ({ page }) => {
   await loginToTamamo(page);
   const title = page.locator(".title-input");
@@ -164,6 +188,68 @@ test("Tamamo edits recursive battle and key branches", async ({ page }) => {
   expect(trialStone.event[0].condition).toEqual({ type: "hasKey", keyId: "annex-key" });
   expect(trialStone.event[0].then).toContainEqual({ type: "dialogue", text: "The branch editor works." });
   expect(trialStone.event.at(-1).condition).toEqual({ type: "battlePassed", battleId: "memory-trial" });
+});
+
+test("Tamamo enforces entity role controls", async ({ page }) => {
+  await loginToTamamo(page);
+  await page.getByRole("button", { name: "Sample", exact: true }).click();
+  await page.getByRole("dialog", { name: "Load sample content?" }).getByRole("button", { name: "Load Sample" }).click();
+
+  const entitySelect = page.locator('select:has(option[value="trial-stone"])');
+  const eventButtons = page.locator(".right-panel .event-editor > .button-row").first();
+
+  await entitySelect.selectOption("annex-door");
+  await expect(eventButtons.getByRole("button", { name: "Transfer" })).toBeEnabled();
+  await expect(eventButtons.getByRole("button", { name: "Knowledge" })).toBeDisabled();
+  await expect(eventButtons.getByRole("button", { name: "Battle" })).toBeDisabled();
+  await expect(page.getByLabel("Entity kind", { exact: true }).locator('option[value="npc"]')).toHaveAttribute("disabled", "");
+
+  await entitySelect.selectOption("trial-stone");
+  await expect(page.getByText("Activates when the player enters its tile.")).toBeVisible();
+  await expect(page.getByRole("checkbox", { name: "Blocks player movement" })).not.toBeChecked();
+  await expect(page.getByRole("checkbox", { name: "Blocks player movement" })).toBeDisabled();
+  await expect(eventButtons.getByRole("button", { name: "Transfer" })).toBeEnabled();
+  await expect(eventButtons.getByRole("button", { name: "Battle" })).toBeEnabled();
+
+  await entitySelect.selectOption("guide");
+  await expect(page.getByText("Activates when the player interacts with it.")).toBeVisible();
+  await expect(eventButtons.getByRole("button", { name: "Transfer" })).toBeDisabled();
+  await eventButtons.getByRole("button", { name: "Flag" }).click();
+  await expect(page.getByLabel("Flag")).toHaveValue("new_flag");
+});
+
+test("Tamamo migrates compatible schema version 0 projects and rejects conflicts", async ({ page }) => {
+  await loginToTamamo(page);
+  const samplePath = new URL("../../packages/schema/src/sample-learning-quest.kitsune.json", import.meta.url);
+  const legacy = JSON.parse(await readFile(samplePath, "utf8"));
+  legacy.schemaVersion = 0;
+  const trigger = legacy.maps[0].entities.find((entity: { id: string }) => entity.id === "trial-stone");
+  delete trigger.collidable;
+
+  const importInput = page.locator('input[type="file"][accept="application/json"]');
+  await importInput.setInputFiles({
+    name: "legacy-compatible.kitsune.json",
+    mimeType: "application/json",
+    buffer: Buffer.from(JSON.stringify(legacy))
+  });
+  await expect(page.getByText("Project imported.")).toBeVisible();
+  await page.locator('select:has(option[value="trial-stone"])').selectOption("trial-stone");
+  await expect(page.getByRole("checkbox", { name: "Blocks player movement" })).not.toBeChecked();
+
+  const downloadPromise = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Export JSON" }).click();
+  const download = await downloadPromise;
+  const exportedPath = await download.path();
+  const exported = JSON.parse(await readFile(exportedPath!, "utf8"));
+  expect(exported.schemaVersion).toBe(1);
+
+  trigger.collidable = true;
+  await importInput.setInputFiles({
+    name: "legacy-conflict.kitsune.json",
+    mimeType: "application/json",
+    buffer: Buffer.from(JSON.stringify(legacy))
+  });
+  await expect(page.getByText(/Import rejected: .*trigger entities must not block player movement/)).toBeVisible();
 });
 
 test("Tamamo playtests unsaved changes without changing normal saves", async ({ page }) => {
@@ -391,9 +477,6 @@ test("Kuzunoha saves, continues, pauses, and preserves text input", async ({ pag
   await expect(worldHud).toBeVisible();
 
   await move(page, "ArrowRight", 8);
-  await expect(worldHud).toBeVisible();
-  await expect(page.getByRole("dialog", { name: "Confirm battle" })).toHaveCount(0);
-  await page.keyboard.press("Space");
   await expect(page.getByRole("dialog", { name: "Confirm battle" })).toContainText("Challenge the Restless Page?");
   await expect(worldHud).toBeHidden();
   await page.getByRole("button", { name: "Start Battle" }).click();

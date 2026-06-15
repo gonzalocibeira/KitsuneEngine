@@ -1,4 +1,4 @@
-import type { BattleDefinition, Entity, EventCommand, KeyDefinition, KitsuneMap, KitsuneProject, KnowledgeEntry, Position, TileValue } from "@kitsune/schema";
+import { isEventCommandAllowed, type BattleDefinition, type Entity, type EntityKind, type EventCommand, type KeyDefinition, type KitsuneMap, type KitsuneProject, type KnowledgeEntry, type Position, type TileValue } from "@kitsune/schema";
 
 export type DialogueMessage = {
   speaker?: string;
@@ -93,13 +93,9 @@ export class GameRuntime {
     const map = this.currentMap();
     const next = { x: this.state.player.x + dx, y: this.state.player.y + dy };
     if (!isWalkable(map, next)) return false;
-    if (this.entityAt(next)?.kind !== "trigger") {
-      this.state.player = next;
-      this.touch();
-      return true;
-    }
+    const entity = this.entityAt(next);
     this.state.player = next;
-    this.interactAt(next);
+    if (entity?.kind === "trigger") this.runEntityInteraction(entity);
     this.touch();
     return true;
   }
@@ -115,7 +111,7 @@ export class GameRuntime {
 
     for (const position of adjacent) {
       const entity = this.entityAt(position);
-      if (entity) {
+      if (entity && entity.kind !== "trigger") {
         this.runEntityInteraction(entity);
         return entity;
       }
@@ -126,10 +122,11 @@ export class GameRuntime {
 
   interactAt(position: Position): Entity | undefined {
     const entity = this.entityAt(position);
-    if (entity) {
+    if (entity && entity.kind !== "trigger") {
       this.runEntityInteraction(entity);
+      return entity;
     }
-    return entity;
+    return undefined;
   }
 
   closeOverlay() {
@@ -207,10 +204,13 @@ export class GameRuntime {
     });
   }
 
-  private runEvent(commands: EventCommand[]): boolean {
+  private runEvent(commands: EventCommand[], entityKind?: EntityKind): boolean {
     const messages: DialogueMessage[] = [];
 
     for (const command of commands) {
+      if (entityKind && !isEventCommandAllowed(entityKind, command.type)) {
+        throw new Error(`${entityKind} entities cannot use "${command.type}" commands`);
+      }
       if (command.type === "dialogue") {
         messages.push({ speaker: command.speaker, text: command.text });
       }
@@ -244,7 +244,7 @@ export class GameRuntime {
           ? this.state.flags[this.requireBattle(command.condition.battleId).victoryFlag] === true
           : this.state.inventoryKeyIds.includes(command.condition.keyId);
         const branchCommands = conditionMet ? command.then : command.else ?? [];
-        return this.runEvent(branchCommands);
+        return this.runEvent(branchCommands, entityKind);
       }
     }
 
@@ -259,7 +259,7 @@ export class GameRuntime {
       this.touch();
       return;
     }
-    if (this.runEvent(entity.event)) {
+    if (this.runEvent(entity.event, entity.kind)) {
       this.showKeyAcquisition(this.grantKeys(entity.rewardKeyIds ?? []));
       this.touch();
     }

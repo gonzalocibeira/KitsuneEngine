@@ -49,6 +49,57 @@ describe("KitsuneProject schema", () => {
     }
   });
 
+  it("migrates compatible schema version 0 projects", () => {
+    const legacy = structuredClone(sampleProject) as Omit<typeof sampleProject, "schemaVersion"> & { schemaVersion: number };
+    legacy.schemaVersion = 0;
+    const trigger = legacy.maps[0].entities.find((entity) => entity.kind === "trigger");
+    if (!trigger) throw new Error("Missing trigger");
+    delete (trigger as Partial<typeof trigger>).collidable;
+
+    const result = validateProject(legacy);
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.project.schemaVersion).toBe(1);
+      expect(result.project.maps[0].entities.find((entity) => entity.kind === "trigger")?.collidable).toBe(false);
+    }
+  });
+
+  it("rejects entity role conflicts", () => {
+    const project = structuredClone(sampleProject);
+    const npc = project.maps[0].entities.find((entity) => entity.kind === "npc");
+    const door = project.maps[0].entities.find((entity) => entity.kind === "door");
+    const trigger = project.maps[0].entities.find((entity) => entity.kind === "trigger");
+    if (!npc || !door || !trigger) throw new Error("Missing role fixtures");
+    npc.event.push({ type: "transferMap", mapId: project.maps[0].id, spawnId: project.start.spawnId });
+    door.event.push({ type: "grantKnowledge", knowledgeId: project.knowledge[0].id });
+    trigger.collidable = true;
+
+    const result = validateProject(project);
+
+    expect(result.ok).toBe(false);
+    expect(result.issues.join("\n")).toContain('npc entities cannot use "transferMap"');
+    expect(result.issues.join("\n")).toContain('door entities cannot use "grantKnowledge"');
+    expect(result.issues.join("\n")).toContain("trigger entities must not block player movement");
+  });
+
+  it("applies entity role restrictions inside branches", () => {
+    const project = structuredClone(sampleProject);
+    const door = project.maps[0].entities.find((entity) => entity.kind === "door");
+    if (!door) throw new Error("Missing door");
+    door.event = [{
+      type: "branch",
+      condition: { type: "hasKey", keyId: project.keys[0].id },
+      then: [{ type: "startBattle", battleId: project.battles[0].id }],
+      else: []
+    }];
+
+    const result = validateProject(project);
+
+    expect(result.ok).toBe(false);
+    expect(result.issues.join("\n")).toContain('door entities cannot use "startBattle"');
+  });
+
   it("defaults battle confirmation messages for older projects", () => {
     const legacy = structuredClone(sampleProject);
     delete (legacy.battles[0] as Partial<(typeof legacy.battles)[number]>).confirmationMessage;

@@ -1,7 +1,10 @@
 import { z } from "zod";
 
-export const SCHEMA_VERSION = 0;
+export const SCHEMA_VERSION = 1;
 export const MAX_BRANCH_NESTING_DEPTH = 3;
+export const ENTITY_KINDS = ["npc", "object", "door", "trigger"] as const;
+
+export type EntityKind = (typeof ENTITY_KINDS)[number];
 
 export const positionSchema = z.object({
   x: z.number().int().nonnegative(),
@@ -38,6 +41,44 @@ export type EventCommand =
   | { type: "transferMap"; mapId: string; spawnId: string }
   | { type: "startBattle"; battleId: string }
   | { type: "branch"; condition: BranchCondition; then: EventCommand[]; else?: EventCommand[] };
+
+export type EventCommandType = EventCommand["type"];
+
+export const ENTITY_ROLE_POLICIES = {
+  npc: {
+    activation: "interact",
+    collision: "configurable",
+    defaultCollidable: true,
+    allowedCommands: ["dialogue", "grantKnowledge", "setFlag", "startBattle", "branch"]
+  },
+  object: {
+    activation: "interact",
+    collision: "configurable",
+    defaultCollidable: true,
+    allowedCommands: ["dialogue", "grantKnowledge", "setFlag", "startBattle", "branch"]
+  },
+  door: {
+    activation: "interact",
+    collision: "configurable",
+    defaultCollidable: true,
+    allowedCommands: ["dialogue", "setFlag", "transferMap", "branch"]
+  },
+  trigger: {
+    activation: "enter",
+    collision: "fixed",
+    defaultCollidable: false,
+    allowedCommands: ["dialogue", "grantKnowledge", "setFlag", "transferMap", "startBattle", "branch"]
+  }
+} as const satisfies Record<EntityKind, {
+  activation: "interact" | "enter";
+  collision: "configurable" | "fixed";
+  defaultCollidable: boolean;
+  allowedCommands: readonly EventCommandType[];
+}>;
+
+export function isEventCommandAllowed(kind: EntityKind, commandType: EventCommandType): boolean {
+  return (ENTITY_ROLE_POLICIES[kind].allowedCommands as readonly EventCommandType[]).includes(commandType);
+}
 
 export const branchConditionSchema = z.discriminatedUnion("type", [
   z.object({
@@ -87,7 +128,7 @@ export const eventCommandSchema: z.ZodType<EventCommand> = z.lazy(() =>
 export const entitySchema = z.object({
   id: z.string().min(1),
   name: z.string().min(1),
-  kind: z.enum(["npc", "object", "door", "trigger"]),
+  kind: z.enum(ENTITY_KINDS),
   position: positionSchema,
   collidable: z.boolean().default(true),
   spriteKey: z.string().min(1).optional(),
@@ -207,7 +248,7 @@ export type ValidationResult =
   | { ok: false; issues: string[] };
 
 export function validateProject(input: unknown): ValidationResult {
-  const parsed = kitsuneProjectSchema.safeParse(input);
+  const parsed = kitsuneProjectSchema.safeParse(migrateProjectInput(input));
   if (!parsed.success) {
     return {
       ok: false,
@@ -290,8 +331,11 @@ export function validateReferences(project: KitsuneProject): string[] {
       if (entity.spriteKey && !spriteKeys.has(entity.spriteKey)) {
         issues.push(`${map.id}.${entity.id} references missing sprite "${entity.spriteKey}"`);
       }
+      if (ENTITY_ROLE_POLICIES[entity.kind].collision === "fixed" && entity.collidable !== ENTITY_ROLE_POLICIES[entity.kind].defaultCollidable) {
+        issues.push(`${map.id}.${entity.id} ${entity.kind} entities must not block player movement`);
+      }
       validateKeyReferences(entity.rewardKeyIds, entity.lock?.keyId, keyIds, issues, `${map.id}.${entity.id}`);
-      validateCommands(entity.event, { issues, mapIds, knowledgeIds, battleIds, keyIds, context: `${map.id}.${entity.id}` });
+      validateCommands(entity.event, { issues, mapIds, knowledgeIds, battleIds, keyIds, context: `${map.id}.${entity.id}`, entityKind: entity.kind });
     }
   }
 
@@ -333,10 +377,14 @@ function validateCommands(
     battleIds: Set<string>;
     keyIds: Set<string>;
     context: string;
+    entityKind?: EntityKind;
   },
   branchDepth = 0
 ) {
-  for (const command of commands) {
+  for (const [commandIndex, command] of commands.entries()) {
+    if (refs.entityKind && !isEventCommandAllowed(refs.entityKind, command.type)) {
+      refs.issues.push(`${refs.context}.event[${commandIndex}] ${refs.entityKind} entities cannot use "${command.type}" commands`);
+    }
     if (command.type === "grantKnowledge" && !refs.knowledgeIds.has(command.knowledgeId)) {
       refs.issues.push(`${refs.context} grants missing knowledge "${command.knowledgeId}"`);
     }
@@ -372,4 +420,26 @@ export function createEmptyLayer(id: string, name: string, width: number, height
 
 export function serializeProject(project: KitsuneProject): string {
   return JSON.stringify(project, null, 2);
+}
+
+function migrateProjectInput(input: unknown): unknown {
+  if (!input || typeof input !== "object" || Array.isArray(input)) return input;
+  const project = structuredClone(input) as Record<string, unknown>;
+  if (project.schemaVersion !== 0) return project;
+
+  project.schemaVersion = SCHEMA_VERSION;
+  if (!Array.isArray(project.maps)) return project;
+  for (const mapValue of project.maps) {
+    if (!mapValue || typeof mapValue !== "object" || Array.isArray(mapValue)) continue;
+    const map = mapValue as Record<string, unknown>;
+    if (!Array.isArray(map.entities)) continue;
+    for (const entityValue of map.entities) {
+      if (!entityValue || typeof entityValue !== "object" || Array.isArray(entityValue)) continue;
+      const entity = entityValue as Record<string, unknown>;
+      if (!Object.hasOwn(entity, "collidable") && entity.kind === "trigger") {
+        entity.collidable = ENTITY_ROLE_POLICIES.trigger.defaultCollidable;
+      }
+    }
+  }
+  return project;
 }

@@ -73,15 +73,12 @@ describe("GameRuntime", () => {
     expect(runtime.snapshot().player).toEqual({ x: 3, y: 2 });
   });
 
-  it("blocks movement into battle entities and asks for confirmation", () => {
+  it("activates trigger entities when entering their tile", () => {
     const runtime = new GameRuntime(sampleProject);
 
-    for (let index = 0; index < 7; index += 1) {
+    for (let index = 0; index < 8; index += 1) {
       expect(runtime.move(1, 0)).toBe(true);
     }
-    expect(runtime.move(1, 0)).toBe(false);
-
-    runtime.interact();
 
     expect(runtime.snapshot().overlay).toEqual({
       type: "battleConfirmation",
@@ -90,14 +87,26 @@ describe("GameRuntime", () => {
     });
   });
 
+  it("refuses forbidden entity commands when validation is bypassed", () => {
+    const project = structuredClone(sampleProject);
+    const npc = project.maps[0].entities.find((entity) => entity.kind === "npc");
+    if (!npc) throw new Error("Missing NPC");
+    npc.event = [{ type: "transferMap", mapId: project.maps[1].id, spawnId: "entry" }];
+    const runtime = new GameRuntime(project);
+
+    expect(() => runtime.interactAt(npc.position)).toThrow('npc entities cannot use "transferMap" commands');
+  });
+
   it("can cancel or confirm a battle before it starts", () => {
     const runtime = new GameRuntime(sampleProject);
 
-    runtime.interactAt({ x: 10, y: 7 });
+    enterSampleTrigger(runtime);
     runtime.closeOverlay();
     expect(runtime.snapshot().overlay).toEqual({ type: "none" });
 
-    runtime.interactAt({ x: 10, y: 7 });
+    expect(runtime.interactAt({ x: 10, y: 7 })).toBeUndefined();
+    expect(runtime.move(-1, 0)).toBe(true);
+    expect(runtime.move(1, 0)).toBe(true);
     runtime.confirmBattle();
     expect(runtime.snapshot().overlay.type).toBe("battle");
   });
@@ -107,7 +116,7 @@ describe("GameRuntime", () => {
     project.battles[0].requiredKnowledgeIds = ["observe"];
     const runtime = new GameRuntime(project);
 
-    runtime.interactAt({ x: 10, y: 7 });
+    enterSampleTrigger(runtime);
     expect(runtime.snapshot().overlay.type).toBe("battleConfirmation");
     runtime.confirmBattle();
     const battle = runtime.snapshot().overlay;
@@ -115,7 +124,8 @@ describe("GameRuntime", () => {
     runtime.answerBattle(battle.battle.answer);
     runtime.closeOverlay();
 
-    runtime.interactAt({ x: 10, y: 7 });
+    expect(runtime.move(-1, 0)).toBe(true);
+    expect(runtime.move(1, 0)).toBe(true);
     expect(runtime.snapshot().overlay).toEqual({
       type: "dialogue",
       messages: [{ speaker: undefined, text: "The trial stone is quiet. You already passed." }]
@@ -313,7 +323,7 @@ describe("GameRuntime", () => {
     project.battles[0].lock = { keyId: "annex-key", missingKeyMessage: "Battle locked." };
     const runtime = new GameRuntime(project);
 
-    runtime.interactAt(battleEntity.position);
+    enterSampleTrigger(runtime);
 
     expect(runtime.snapshot().overlay).toEqual({ type: "dialogue", messages: [{ text: "Battle locked." }] });
     expect(runtime.snapshot().inventoryKeyIds).toEqual([]);
@@ -362,6 +372,18 @@ describe("GameRuntime", () => {
 });
 
 function startSampleBattle(runtime: GameRuntime) {
-  runtime.interactAt({ x: 10, y: 7 });
+  enterSampleTrigger(runtime);
   runtime.confirmBattle();
+}
+
+function enterSampleTrigger(runtime: GameRuntime) {
+  const player = runtime.snapshot().player;
+  if (player.x === 10 && player.y === 7) {
+    runtime.move(-1, 0);
+    runtime.move(1, 0);
+    return;
+  }
+  for (let index = player.x; index < 10; index += 1) {
+    runtime.move(1, 0);
+  }
 }
